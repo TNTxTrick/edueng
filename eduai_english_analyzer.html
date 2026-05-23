@@ -1,0 +1,2777 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduAI English Hub - Phân Tích Hình Ảnh, PDF & PPTX Luyện Tiếng Anh</title>
+    <!-- Import Google Fonts (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons for visual flair -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js CDN for client-side text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <!-- JSZip CDN for PPTX decompression & parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        /* Modern Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Custom Keyframe Animations */
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .8; transform: scale(1.02); }
+        }
+        .pulse-element {
+            animation: pulse-soft 3s infinite;
+        }
+
+        /* 3D Flip Card Effect */
+        .flip-card {
+            perspective: 1000px;
+        }
+        .flip-card-inner {
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .flip-card.flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        .flip-card-front, .flip-card-back {
+            backface-visibility: hidden;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .flip-card-back {
+            transform: rotateY(180deg);
+        }
+    </style>
+</head>
+<body class="h-full text-slate-800 flex flex-col antialiased">
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, query, getDocs, addDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Setup global state references
+    window.db = null;
+    window.auth = null;
+    window.currentUser = null;
+    window.appId = typeof __app_id !== 'undefined' ? __app_id : 'eduai-english-analyzer-hub';
+
+    // Expose Firebase Firestore methods to standard script blocks
+    window.doc = doc;
+    window.setDoc = setDoc;
+    window.getDoc = getDoc;
+    window.collection = collection;
+    window.query = query;
+    window.getDocs = getDocs;
+    window.addDoc = addDoc;
+    window.onSnapshot = onSnapshot;
+    window.updateDoc = updateDoc;
+
+    // Check if configuration exists
+    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        try {
+            const firebaseConfig = JSON.parse(__firebase_config);
+            const app = initializeApp(firebaseConfig);
+            window.db = getFirestore(app);
+            window.auth = getAuth(app);
+            
+            // Handle Auth
+            const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+            if (token) {
+                signInWithCustomToken(window.auth, token).then((userCredential) => {
+                    window.currentUser = userCredential.user;
+                    console.log("Logged in with custom token:", window.currentUser.uid);
+                    initAppUI();
+                }).catch((error) => {
+                    console.error("Custom token login failed, falling back to anonymous:", error);
+                    loginAnonymously();
+                });
+            } else {
+                loginAnonymously();
+            }
+        } catch (e) {
+            console.error("Firebase Initialization Failed: ", e);
+            showNotification("Lỗi kết nối Firebase, cơ sở dữ liệu sẽ hoạt động ở chế độ ngoại tuyến tạm thời.", "error");
+        }
+    } else {
+        console.warn("Firebase configuration was not provided. Defaulting to local mock storage.");
+        setTimeout(() => {
+            showNotification("Đang sử dụng bộ lưu trữ nội bộ trình duyệt.", "warning");
+            initAppUI();
+        }, 500);
+    }
+
+    async function loginAnonymously() {
+        try {
+            const userCredential = await signInAnonymously(window.auth);
+            window.currentUser = userCredential.user;
+            console.log("Logged in anonymously:", window.currentUser.uid);
+            initAppUI();
+        } catch (error) {
+            console.error("Anonymous authentication failed:", error);
+            showNotification("Đăng nhập thất bại. Các chức năng lưu trữ đám mây sẽ không hoạt động.", "error");
+            initAppUI();
+        }
+    }
+</script>
+
+<script>
+    // Global App State Variables
+    let activeTab = 'dashboard';
+    let currentAnalysis = null; 
+    let historyList = [];
+    let isProcessing = false;
+    let quizState = {
+        answers: {}, 
+        graded: false,
+        score: 0
+    };
+    let activeChatHistory = []; 
+
+    // Pre-built vocabulary data for theme learning
+    const prebuiltVocabThemes = {
+        tech: {
+            title: "Công Nghệ & Trí Tuệ Nhân Tạo",
+            description: "Học các thuật ngữ thiết yếu về công nghệ, lập trình và cuộc cách mạng AI thế kỷ 21.",
+            icon: "fa-robot",
+            bg: "from-blue-500 to-indigo-600",
+            words: [
+                { word: "Artificial Intelligence", meaning: "Trí tuệ nhân tạo (Khả năng tư duy và học hỏi của máy tính)", example: "Artificial Intelligence is reforming education globally." },
+                { word: "Machine Learning", meaning: "Học máy (Nhánh nhỏ của AI giúp máy tính học hỏi từ dữ liệu)", example: "This recommendation system uses machine learning algorithms." },
+                { word: "Algorithm", meaning: "Thuật toán (Quy trình các bước giải quyết một vấn đề cụ thể)", example: "Social media networks run on complex search algorithms." },
+                { word: "Cybersecurity", meaning: "An ninh mạng (Bảo vệ thông tin và hệ thống mạng khỏi tin tặc)", example: "Companies invest heavily in cybersecurity to safeguard databases." },
+                { word: "Database", meaning: "Cơ sở dữ liệu (Hệ thống lưu trữ thông tin điện tử lớn)", example: "Firestore is a flexible, highly scalable cloud database." },
+                { word: "Innovation", meaning: "Sự đổi mới, sáng chế (Ý tưởng hoặc công nghệ đột phá)", example: "Technological innovation drives the growth of modern businesses." }
+            ]
+        },
+        daily: {
+            title: "Giao Tiếp Thường Nhật",
+            description: "Nâng cấp vốn từ vựng xã giao tự nhiên, lịch sự và biểu đạt cảm xúc khéo léo.",
+            icon: "fa-comments",
+            bg: "from-emerald-500 to-teal-600",
+            words: [
+                { word: "Appreciate", meaning: "Trân trọng, cảm kích (Biết ơn giá trị của việc gì đó)", example: "I really appreciate your timely assistance with this lesson." },
+                { word: "Incredible", meaning: "Đáng kinh ngạc (Tuyệt vời đến mức khó tin)", example: "The food at this Vietnamese local street market is incredible!" },
+                { word: "Sincere", meaning: "Chân thành, thật lòng (Cảm xúc xuất phát từ trái tim)", example: "Please accept my sincere apologies for the unexpected delay." },
+                { word: "Collaborate", meaning: "Hợp tác (Làm việc chung để đạt mục tiêu lớn)", example: "Our study group will collaborate on this English assignment." },
+                { word: "Ambitious", meaning: "Có hoài bão, khát vọng (Quyết tâm đạt thành tựu cao)", example: "She is an ambitious student aiming for a high IELTS score." },
+                { word: "Overwhelmed", meaning: "Quá tải, ngợp (Cảm giác quá nhiều áp lực)", example: "He felt overwhelmed by the amount of vocabulary in the document." }
+            ]
+        },
+        travel: {
+            title: "Du Lịch & Khám Phá",
+            description: "Giao tiếp trôi chảy tại sân bay, nhà hàng, khách sạn và các địa điểm danh lam thắng cảnh.",
+            icon: "fa-plane-departure",
+            bg: "from-amber-500 to-orange-600",
+            words: [
+                { word: "Itinerary", meaning: "Lịch trình (Chi tiết về các điểm đến và thời gian cụ thể)", example: "We drafted a detailed itinerary for our summer holiday in Hanoi." },
+                { word: "Breathtaking", meaning: "Đẹp nghẹt thở, hùng vĩ (Phong cảnh cực kỳ ấn tượng)", example: "Ha Long Bay offers breathtaking landscapes to global travelers." },
+                { word: "Hospitality", meaning: "Sự hiếu khách, mến khách (Sự chào đón ấm áp của chủ nhà)", example: "Vietnamese people are well-known for their friendly hospitality." },
+                { word: "Destination", meaning: "Điểm đến (Nơi đang hướng tới của hành trình)", example: "Da Nang is a popular travel destination for foreign tourists." },
+                { word: "Adventure", meaning: "Cuộc phiêu lưu (Trải nghiệm thú vị và đầy mạo hiểm)", example: "Trekking in Sapa mountains is a true adventure for nature lovers." },
+                { word: "Souvenir", meaning: "Quà lưu niệm (Vật lưu niệm giữ lại ký ức chuyến đi)", example: "I bought a traditional silk scarf as a travel souvenir." }
+            ]
+        },
+        business: {
+            title: "Kinh Doanh & Công Sở",
+            description: "Thành thạo văn phong văn phòng, đàm phán hợp đồng và báo cáo tài chính chuyên nghiệp.",
+            icon: "fa-briefcase",
+            bg: "from-purple-500 to-fuchsia-600",
+            words: [
+                { word: "Negotiate", meaning: "Đàm phán, thương lượng (Thảo luận để đạt thỏa thuận chung)", example: "The manager will negotiate the terms of the strategic contract." },
+                { word: "Productivity", meaning: "Năng suất (Hiệu suất hoàn thành khối lượng công việc)", example: "A clean workspace can boost employee productivity significantly." },
+                { word: "Revenue", meaning: "Doanh thu (Tổng số tiền thu về từ bán hàng)", example: "The tech startup reported a 30% increase in quarterly revenue." },
+                { word: "Strategy", meaning: "Chiến lược (Kế hoạch hành động dài hạn cho doanh nghiệp)", example: "We need a solid marketing strategy to launch our software." },
+                { word: "Enterprise", meaning: "Doanh nghiệp (Tập đoàn hoặc mô hình kinh doanh lớn)", example: "Small and medium enterprises form the backbone of the economy." },
+                { word: "Acquisition", meaning: "Sự mua lại, thâu tóm (Mua lại công ty hoặc tài sản khác)", example: "The tech giant announced its latest corporate acquisition yesterday." }
+            ]
+        },
+        academic: {
+            title: "IELTS Academic Essentials",
+            description: "Nắm vững danh sách từ vựng học thuật quan trọng để nâng band Writing và Reading.",
+            icon: "fa-graduation-cap",
+            bg: "from-rose-500 to-pink-600",
+            words: [
+                { word: "Analyze", meaning: "Phân tích (Nghiên cứu kỹ lưỡng để giải mã cấu trúc)", example: "Candidates need to analyze trends in IELTS Writing Task 1." },
+                { word: "Significant", meaning: "Đáng kể, quan trọng (Đủ lớn để có sức ảnh hưởng rõ rệt)", example: "There is a significant difference between these two research methods." },
+                { word: "Hypothesis", meaning: "Giả thuyết (Ý tưởng đề xuất cần được thử nghiệm)", example: "The university scientists set out to test their original hypothesis." },
+                { word: "Evaluate", meaning: "Đánh giá (Xem xét kỹ để nhận định giá trị/chất lượng)", example: "It is essential to evaluate the reliability of information sources." },
+                { word: "Accurate", meaning: "Chính xác (Đúng đắn tuyệt đối, không có sai lệch)", example: "The AI system provided an accurate translation of the text." },
+                { word: "Obstacle", meaning: "Trở ngại, rào cản (Cản trở con đường tiến lên mục tiêu)", example: "Fear of making pronunciation mistakes is the biggest learning obstacle." }
+            ]
+        }
+    };
+
+    let activeVocabThemeKey = null;
+    let activeVocabIndex = 0;
+    let currentVocabStudyMode = 'flashcard'; 
+    let vocabQuizAnswers = {}; 
+
+    // Helper resolver function for system/dynamic customized vocab themes
+    function getVocabTheme(key) {
+        if (!key) return null;
+        if (key.startsWith('history_')) {
+            const recordId = key.replace('history_', '');
+            const found = historyList.find(r => r.id === recordId);
+            if (found && found.analysis && found.analysis.vocabulary) {
+                let icon = 'fa-file-pdf';
+                let bg = 'from-rose-500 to-pink-600';
+                if (found.type === 'image') {
+                    icon = 'fa-image';
+                    bg = 'from-sky-500 to-indigo-600';
+                } else if (found.type === 'pptx') {
+                    icon = 'fa-file-powerpoint';
+                    bg = 'from-orange-500 to-amber-600';
+                }
+                return {
+                    title: `Từ vựng: ${found.title}`,
+                    description: `Trích xuất từ "${found.fileName}"`,
+                    icon: icon,
+                    bg: bg,
+                    words: found.analysis.vocabulary,
+                    isCustom: true
+                };
+            }
+        }
+        return prebuiltVocabThemes[key];
+    }
+
+    // Configure client-side PDF.js Worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    // Custom non-blocking Notification Toast system
+    function showNotification(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        const toastIcon = document.getElementById('toast-icon');
+
+        toastMessage.innerText = message;
+        
+        toast.className = "fixed top-5 right-5 z-[60] flex items-center p-4 rounded-xl shadow-xl transition-all duration-300 transform translate-y-0 ";
+        if (type === 'success') {
+            toast.className += "bg-emerald-50 text-emerald-800 border-l-4 border-emerald-500 shadow-emerald-200/50";
+            toastIcon.className = "fa-solid fa-circle-check text-emerald-500 mr-3 text-lg";
+        } else if (type === 'error') {
+            toast.className += "bg-rose-50 text-rose-800 border-l-4 border-rose-500 shadow-rose-200/50";
+            toastIcon.className = "fa-solid fa-circle-xmark text-rose-500 mr-3 text-lg";
+        } else {
+            toast.className += "bg-amber-50 text-amber-800 border-l-4 border-amber-500 shadow-amber-200/50";
+            toastIcon.className = "fa-solid fa-triangle-exclamation text-amber-500 mr-3 text-lg";
+        }
+
+        toast.classList.remove('opacity-0', 'pointer-events-none');
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'pointer-events-none');
+        }, 4000);
+    }
+
+    // Modal dialogue handlers (Replacing blocking JS alert/confirm commands)
+    let modalActionCallback = null;
+    function showCustomModal(title, text, actionText, callback) {
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-text').innerText = text;
+        document.getElementById('modal-confirm-btn').innerText = actionText;
+        modalActionCallback = callback;
+        
+        document.getElementById('custom-confirm-modal').classList.remove('hidden');
+    }
+
+    function closeCustomModal() {
+        document.getElementById('custom-confirm-modal').classList.add('hidden');
+        modalActionCallback = null;
+    }
+
+    function executeModalConfirm() {
+        if (modalActionCallback) {
+            modalActionCallback();
+        }
+        closeCustomModal();
+    }
+</script>
+
+<div class="flex h-full flex-col md:flex-row overflow-hidden">
+    <!-- Sidebar / Navigation Panel -->
+    <aside class="w-full md:w-64 bg-slate-900 text-slate-100 flex flex-col shadow-2xl z-20">
+        <div class="p-6 border-b border-slate-800 flex items-center space-x-3">
+            <div class="bg-primary-500 text-white p-2.5 rounded-xl shadow-md flex items-center justify-center">
+                <i class="fa-solid fa-brain-circuit text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-sky-400 to-indigo-300 bg-clip-text text-transparent">EduAI English</h1>
+                <p class="text-xs text-slate-400 font-medium">Bản lĩnh Anh Ngữ đột phá</p>
+            </div>
+        </div>
+
+        <!-- User profile details -->
+        <div class="px-6 py-4 bg-slate-950 flex items-center space-x-3 text-slate-300 text-xs">
+            <i class="fa-solid fa-user-circle text-slate-400 text-base"></i>
+            <div class="truncate">
+                <p class="font-semibold text-slate-200">Người dùng học tập</p>
+                <p id="user-id-display" class="font-mono text-[10px] text-slate-500 truncate">Đang kết nối...</p>
+            </div>
+        </div>
+
+        <!-- Navigation items -->
+        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            <button onclick="switchTab('dashboard')" id="btn-tab-dashboard" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-200 bg-primary-600 text-white">
+                <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                <span>Trang Tổng Quan</span>
+            </button>
+            <button onclick="switchTab('image')" id="btn-tab-image" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-image-portrait w-5 text-center"></i>
+                <span>Phân Tích Ảnh Học Tập</span>
+            </button>
+            <button onclick="switchTab('pdf')" id="btn-tab-pdf" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-file-pdf w-5 text-center"></i>
+                <span>Phân Tích File PDF</span>
+            </button>
+            <button onclick="switchTab('pptx')" id="btn-tab-pptx" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-file-powerpoint w-5 text-center text-orange-400"></i>
+                <span>Phân Tích File PPTX</span>
+            </button>
+            <button onclick="switchTab('vocab')" id="btn-tab-vocab" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-book-bookmark w-5 text-center"></i>
+                <span>Luyện Từ Vựng</span>
+            </button>
+            <button onclick="switchTab('history')" id="btn-tab-history" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-folder-open w-5 text-center"></i>
+                <span>Bộ Sưu Tập Đã Lưu</span>
+            </button>
+            <button onclick="switchTab('practice')" id="btn-tab-practice" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200">
+                <i class="fa-solid fa-graduation-cap w-5 text-center"></i>
+                <span>Luyện Đề AI</span>
+            </button>
+        </nav>
+
+        <!-- Sidebar footer -->
+        <div class="p-6 border-t border-slate-800 text-center text-xs text-slate-500">
+            <p>© 2026 EduAI English</p>
+            <p class="mt-1 flex items-center justify-center text-primary-500 gap-1"><i class="fa-solid fa-shield-halved"></i> Bảo mật chuẩn AI</p>
+        </div>
+    </aside>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <!-- Top bar/Global Actions -->
+        <header class="bg-white border-b border-slate-200 px-8 py-4 flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0 shadow-sm shrink-0">
+            <h2 id="page-title" class="text-2xl font-bold text-slate-800 tracking-tight">Trang Tổng Quan Học Tập</h2>
+            <div class="flex items-center space-x-3">
+                <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200">
+                    <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2"></span>
+                    Trạng thái: AI Sẵn Sàng
+                </span>
+                <button onclick="resetApplicationData()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium transition-all" title="Reset dữ liệu">
+                    <i class="fa-solid fa-rotate mr-1"></i> Làm mới
+                </button>
+            </div>
+        </header>
+
+        <!-- Central Working Canvas Area -->
+        <div class="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50">
+
+            <!-- TAB: DASHBOARD -->
+            <section id="tab-dashboard-container" class="space-y-6">
+                <!-- Welcome Promo Banner -->
+                <div class="bg-gradient-to-r from-sky-600 via-indigo-600 to-indigo-700 text-white p-8 rounded-3xl shadow-xl flex flex-col lg:flex-row justify-between items-center gap-6 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent"></div>
+                    <div class="space-y-3 max-w-xl z-10">
+                        <span class="bg-indigo-500/30 text-indigo-100 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border border-indigo-400/30">Nâng cao hiệu suất</span>
+                        <h3 class="text-3xl font-extrabold tracking-tight">Phá Băng Học Tiếng Anh Cùng Trợ Lý Trí Tuệ Nhân Tạo</h3>
+                        <p class="text-indigo-100/90 text-sm leading-relaxed">Hãy tải lên một ảnh bài tập tiếng Anh, một file sách PDF, hoặc tệp thuyết trình PPTX. Trí tuệ nhân tạo sẽ lập tức phân tích kiến thức quan trọng, trích từ vựng và tự động tạo bài kiểm tra tương tự giúp bạn làm chủ kiến thức!</p>
+                    </div>
+                    <div class="flex flex-wrap gap-3 shrink-0 z-10">
+                        <button onclick="switchTab('vocab')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-6 py-3.5 rounded-2xl shadow-lg transition-all transform hover:-translate-y-1">
+                            <i class="fa-solid fa-book-open mr-2"></i> Thử Từ Vựng Chủ Đề
+                        </button>
+                        <button onclick="switchTab('pptx')" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-6 py-3.5 rounded-2xl shadow-lg transition-all transform hover:-translate-y-1">
+                            <i class="fa-solid fa-file-powerpoint mr-2"></i> Gửi Tệp PPTX
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Numerical Stat Badges -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                        <div class="p-4 bg-sky-50 text-sky-600 rounded-xl"><i class="fa-solid fa-images text-2xl"></i></div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Ảnh đã gửi</p>
+                            <h4 id="stat-images-count" class="text-2xl font-bold mt-1 text-slate-800">0</h4>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                        <div class="p-4 bg-indigo-50 text-indigo-600 rounded-xl"><i class="fa-solid fa-file-invoice text-2xl"></i></div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Tài liệu PDF</p>
+                            <h4 id="stat-pdf-count" class="text-2xl font-bold mt-1 text-slate-800">0</h4>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                        <div class="p-4 bg-amber-50 text-amber-600 rounded-xl"><i class="fa-solid fa-file-powerpoint text-2xl"></i></div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Slide PPTX</p>
+                            <h4 id="stat-pptx-count" class="text-2xl font-bold mt-1 text-slate-800">0</h4>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                        <div class="p-4 bg-emerald-50 text-emerald-600 rounded-xl"><i class="fa-solid fa-circle-question text-2xl"></i></div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Câu hỏi đã tạo</p>
+                            <h4 id="stat-questions-count" class="text-2xl font-bold mt-1 text-slate-800">0</h4>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                        <div class="p-4 bg-purple-50 text-purple-600 rounded-xl"><i class="fa-solid fa-check-double text-2xl"></i></div>
+                        <div>
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Hoàn thành</p>
+                            <h4 id="stat-completed-quiz" class="text-2xl font-bold mt-1 text-slate-800">0</h4>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Guides & Recent Activity -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <!-- Quick Manual instructions card -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h4 class="font-bold text-slate-800 text-lg flex items-center"><i class="fa-solid fa-circle-info text-primary-500 mr-2"></i> Hướng Dẫn Nhanh</h4>
+                        <ul class="space-y-4">
+                            <li class="flex space-x-3 text-sm text-slate-600">
+                                <span class="h-6 w-6 shrink-0 bg-primary-100 text-primary-700 font-bold rounded-full flex items-center justify-center text-xs">1</span>
+                                <span>Chụp ảnh bài tập, hoặc tải lên file PDF, file thuyết trình PPTX tiếng Anh bạn muốn học.</span>
+                            </li>
+                            <li class="flex space-x-3 text-sm text-slate-600">
+                                <span class="h-6 w-6 shrink-0 bg-primary-100 text-primary-700 font-bold rounded-full flex items-center justify-center text-xs">2</span>
+                                <span>Hệ thống AI sẽ tự động đọc, tóm tắt và sinh câu hỏi trắc nghiệm tiếng Anh tương ứng.</span>
+                            </li>
+                            <li class="flex space-x-3 text-sm text-slate-600">
+                                <span class="h-6 w-6 shrink-0 bg-primary-100 text-primary-700 font-bold rounded-full flex items-center justify-center text-xs">3</span>
+                                <span>Vào mục <strong>"Luyện Đề AI"</strong> để giải đề thi tương tự nhằm khắc sâu kiến thức.</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Recent uploads list -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-72 animate-fade-in">
+                        <h4 class="font-bold text-slate-800 text-lg mb-4 flex items-center justify-between">
+                            <span><i class="fa-solid fa-history text-slate-500 mr-2"></i> Hoạt động gần đây</span>
+                            <button onclick="switchTab('history')" class="text-xs text-primary-600 hover:underline">Xem tất cả</button>
+                        </h4>
+                        <div id="dashboard-recent-activities" class="flex-1 overflow-y-auto space-y-3 pr-2 text-sm text-slate-500">
+                            <div class="text-center py-10">Bạn chưa tải lên tài liệu nào. Hãy bắt đầu ngay!</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: IMAGE ANALYSIS -->
+            <section id="tab-image-container" class="hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    <!-- Drop area card -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-lg text-slate-800">Tải Ảnh Bài Tập / Từ Vựng</h3>
+                        <p class="text-xs text-slate-500">AI sẽ tự nhận diện câu chữ tiếng Anh và tạo bài tập tương tự cho bạn.</p>
+                        
+                        <!-- Drag-and-drop Image Uploader -->
+                        <div id="image-drag-zone" class="border-2 border-dashed border-slate-300 hover:border-primary-500 rounded-2xl p-8 text-center cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition-all flex flex-col items-center justify-center min-h-[220px]">
+                            <input type="file" id="image-file-input" accept="image/*" class="hidden">
+                            <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-400 mb-3" id="img-upload-icon"></i>
+                            <p class="text-sm font-semibold text-slate-700 mb-1" id="img-upload-text">Nhấp để chọn hoặc kéo thả ảnh vào đây</p>
+                            <p class="text-xs text-slate-400">Chấp nhận JPG, PNG, WEBP (Ảnh tự động nén tối ưu)</p>
+                        </div>
+
+                        <!-- Image Preview Area -->
+                        <div id="image-preview-container" class="hidden relative rounded-xl overflow-hidden border border-slate-200 max-h-[300px]">
+                            <img id="image-preview" class="w-full h-auto object-contain max-h-[280px] bg-slate-100" src="" alt="Bản xem trước">
+                            <button onclick="clearSelectedImage()" class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-2 h-8 w-8 flex items-center justify-center transition-all shadow-md">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <!-- Analysis Options -->
+                        <div class="space-y-2">
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Trọng tâm học tập mong muốn</label>
+                            <select id="image-focus-mode" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 transition-all outline-none">
+                                <option value="general">Tất cả từ vựng, ngữ pháp và bài tập</option>
+                                <option value="grammar">Chuyên sâu ngữ pháp tiếng Anh</option>
+                                <option value="vocabulary">Mở rộng vốn từ vựng mới & giao tiếp</option>
+                                <option value="easy-practice">Luyện tập ở cấp độ cơ bản</option>
+                            </select>
+                        </div>
+
+                        <button id="btn-process-image" onclick="processSelectedImage()" disabled class="w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-microchip-ai"></i> Phân Tích Hình Ảnh
+                        </button>
+                    </div>
+
+                    <!-- Output & Analysis screen -->
+                    <div class="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[400px]">
+                        <h3 class="font-bold text-lg text-slate-800 mb-4 flex items-center"><i class="fa-solid fa-wand-magic-sparkles text-primary-500 mr-2"></i> Kết Quả Phân Tích & Gợi Ý Luyện Tập</h3>
+                        <div id="image-result-placeholder" class="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-3">
+                            <img src="https://placehold.co/400x300/e2e8f0/64748b?text=AI+Analysis+Center" class="max-w-[200px] opacity-75 rounded-xl border border-slate-200 shadow-inner" alt="Placeholder">
+                            <p class="text-sm text-slate-500 font-medium">Báo cáo phân tích từ vựng và câu hỏi trắc nghiệm tiếng Anh sẽ hiện ở đây sau khi bạn gửi ảnh.</p>
+                        </div>
+                        <div id="image-result-display" class="hidden flex-1 space-y-6">
+                            <!-- Analysis Header -->
+                            <div class="border-b border-slate-100 pb-4">
+                                <span class="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-bold">Thành công</span>
+                                <h4 id="img-analysis-title" class="text-xl font-bold mt-2 text-slate-800">Tên bài học tự động</h4>
+                            </div>
+                            <!-- Analysis Section -->
+                            <div class="space-y-4">
+                                <div>
+                                    <h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tóm tắt nội dung học tập</h5>
+                                    <p id="img-analysis-summary" class="text-sm text-slate-600 leading-relaxed"></p>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                                        <h5 class="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-list-ol mr-1"></i> Điểm ngữ pháp</h5>
+                                        <ul id="img-analysis-keypoints" class="text-xs text-slate-700 space-y-1 list-disc pl-4"></ul>
+                                    </div>
+                                    <div class="bg-sky-50/50 p-4 rounded-xl border border-sky-100">
+                                        <h5 class="text-xs font-bold text-sky-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-spell-check mr-1"></i> Từ vựng mới quan trọng</h5>
+                                        <div id="img-analysis-vocab" class="space-y-2 max-h-[140px] overflow-y-auto pr-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Quick actions -->
+                            <div class="pt-4 border-t border-slate-100 flex flex-wrap gap-2 justify-between items-center">
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="startQuizArena()" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-circle-play"></i> Luyện bài tập tương tự
+                                    </button>
+                                    <button id="btn-vocab-practice-image" onclick="practiceCurrentDocumentVocab()" class="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-book-bookmark"></i> Luyện từ vựng tài liệu
+                                    </button>
+                                </div>
+                                <button onclick="switchTab('practice')" class="text-xs text-slate-400 hover:text-slate-600">Xem câu hỏi <i class="fa-solid fa-arrow-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: PDF ANALYSIS -->
+            <section id="tab-pdf-container" class="hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    <!-- Drop area card -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-lg text-slate-800">Tải Lên File Sách Tiếng Anh PDF</h3>
+                        <p class="text-xs text-slate-500">Chúng tôi tự động nhận diện chữ của 10 trang đầu tệp sách PDF và bóc tách dữ liệu học tương ứng.</p>
+
+                        <!-- Drag-and-drop PDF Uploader -->
+                        <div id="pdf-drag-zone" class="border-2 border-dashed border-slate-300 hover:border-primary-500 rounded-2xl p-8 text-center cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition-all flex flex-col items-center justify-center min-h-[220px]">
+                            <input type="file" id="pdf-file-input" accept="application/pdf" class="hidden">
+                            <i class="fa-solid fa-file-pdf text-4xl text-slate-400 mb-3"></i>
+                            <p class="text-sm font-semibold text-slate-700 mb-1" id="pdf-upload-text">Nhấp để chọn hoặc kéo thả tệp PDF vào đây</p>
+                            <p class="text-xs text-slate-400">Chấp nhận tệp định dạng PDF tối đa 15MB</p>
+                        </div>
+
+                        <!-- PDF Meta Information container -->
+                        <div id="pdf-meta-container" class="hidden bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3 relative">
+                            <button onclick="clearSelectedPdf()" class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-2.5 h-8 w-8 flex items-center justify-center transition-all shadow-md">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                            </button>
+                            <div class="flex items-center space-x-3">
+                                <span class="p-3 bg-rose-50 text-rose-500 rounded-xl"><i class="fa-solid fa-file-pdf text-2xl"></i></span>
+                                <div class="truncate pr-8">
+                                    <p id="pdf-file-name" class="font-bold text-slate-800 text-sm truncate">tailieu.pdf</p>
+                                    <p class="text-xs text-slate-400"><span id="pdf-file-size">0 KB</span> • <span id="pdf-file-pages">0</span> trang</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quiz generator sizing selection -->
+                        <div class="space-y-2">
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Số câu trắc nghiệm tự sinh</label>
+                            <select id="pdf-question-count" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 outline-none transition-all">
+                                <option value="5">Tạo 5 câu hỏi ôn luyện cơ bản</option>
+                                <option value="10">Tạo 10 câu hỏi ôn luyện chuyên sâu</option>
+                            </select>
+                        </div>
+
+                        <button id="btn-process-pdf" onclick="processSelectedPdf()" disabled class="w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-brain"></i> Tiến Hành Đọc & Phân Tích PDF
+                        </button>
+                    </div>
+
+                    <!-- PDF analysis display results -->
+                    <div class="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[400px]">
+                        <h3 class="font-bold text-lg text-slate-800 mb-4 flex items-center"><i class="fa-solid fa-wand-magic-sparkles text-primary-500 mr-2"></i> Phân Tích Giáo Trình Sách PDF</h3>
+                        <div id="pdf-result-placeholder" class="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-3">
+                            <img src="https://placehold.co/400x300/e2e8f0/64748b?text=AI+PDF+Center" class="max-w-[200px] opacity-75 rounded-xl border border-slate-200 shadow-inner" alt="Placeholder">
+                            <p class="text-sm text-slate-500 font-medium">Báo cáo tóm tắt cấu trúc sách và bộ từ mới từ PDF sẽ tự động hiển thị tại đây.</p>
+                        </div>
+                        <div id="pdf-result-display" class="hidden flex-1 space-y-6 animate-fade-in">
+                            <div class="border-b border-slate-100 pb-4">
+                                <span class="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-bold">Bóc tách PDF thành công</span>
+                                <h4 id="pdf-analysis-title" class="text-xl font-bold mt-2 text-slate-800">Tên tác phẩm PDF</h4>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tóm lược nội dung giáo trình</h5>
+                                    <p id="pdf-analysis-summary" class="text-sm text-slate-600 leading-relaxed"></p>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                                        <h5 class="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-circle-nodes mr-1.5"></i> Điểm ngữ pháp chính</h5>
+                                        <ul id="pdf-analysis-keypoints" class="text-xs text-slate-700 space-y-1.5 list-disc pl-4"></ul>
+                                    </div>
+                                    <div class="bg-sky-50/50 p-4 rounded-xl border border-sky-100">
+                                        <h5 class="text-xs font-bold text-sky-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-list-check mr-1.5"></i> Nhóm từ mới chọn lọc</h5>
+                                        <div id="pdf-analysis-vocab" class="space-y-2 max-h-[140px] overflow-y-auto pr-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Quick actions -->
+                            <div class="pt-4 border-t border-slate-100 flex flex-wrap gap-2 justify-between items-center">
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="startQuizArena()" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-gamepad"></i> Bắt đầu giải bài trắc nghiệm
+                                    </button>
+                                    <button id="btn-vocab-practice-pdf" onclick="practiceCurrentDocumentVocab()" class="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-book-bookmark"></i> Luyện từ vựng tài liệu
+                                    </button>
+                                </div>
+                                <button onclick="switchTab('practice')" class="text-xs text-slate-400 hover:text-slate-600">Xem câu hỏi <i class="fa-solid fa-arrow-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: PPTX ANALYSIS -->
+            <section id="tab-pptx-container" class="hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    <!-- Drop area card -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-lg text-slate-800">Tải Lên File Trình Chiếu PPTX</h3>
+                        <p class="text-xs text-slate-500">Chúng tôi tự động nhận diện chữ trong các slide trình chiếu PowerPoint của bạn và bóc tách dữ liệu tương ứng.</p>
+
+                        <!-- Drag-and-drop PPTX Uploader -->
+                        <div id="pptx-drag-zone" class="border-2 border-dashed border-slate-300 hover:border-amber-500 rounded-2xl p-8 text-center cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition-all flex flex-col items-center justify-center min-h-[220px]">
+                            <input type="file" id="pptx-file-input" accept=".pptx" class="hidden">
+                            <i class="fa-solid fa-file-powerpoint text-4xl text-orange-500 mb-3"></i>
+                            <p class="text-sm font-semibold text-slate-700 mb-1" id="pptx-upload-text">Nhấp để chọn hoặc kéo thả tệp PPTX vào đây</p>
+                            <p class="text-xs text-slate-400">Chấp nhận tệp định dạng PPTX thuyết trình tối đa 20MB</p>
+                        </div>
+
+                        <!-- PPTX Meta Information container -->
+                        <div id="pptx-meta-container" class="hidden bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3 relative">
+                            <button onclick="clearSelectedPptx()" class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-2.5 h-8 w-8 flex items-center justify-center transition-all shadow-md">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                            </button>
+                            <div class="flex items-center space-x-3">
+                                <span class="p-3 bg-orange-50 text-orange-500 rounded-xl"><i class="fa-solid fa-file-powerpoint text-2xl"></i></span>
+                                <div class="truncate pr-8">
+                                    <p id="pptx-file-name" class="font-bold text-slate-800 text-sm truncate">presentation.pptx</p>
+                                    <p class="text-xs text-slate-400"><span id="pptx-file-size">0 KB</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quiz generator sizing selection -->
+                        <div class="space-y-2">
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Số câu trắc nghiệm tự sinh</label>
+                            <select id="pptx-question-count" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all">
+                                <option value="5">Tạo 5 câu hỏi ôn luyện cơ bản</option>
+                                <option value="10">Tạo 10 câu hỏi ôn luyện chuyên sâu</option>
+                            </select>
+                        </div>
+
+                        <button id="btn-process-pptx" onclick="processSelectedPptx()" disabled class="w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-brain text-orange-300"></i> Tiến Hành Đọc & Phân Tích PPTX
+                        </button>
+                    </div>
+
+                    <!-- PPTX analysis display results -->
+                    <div class="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[400px]">
+                        <h3 class="font-bold text-lg text-slate-800 mb-4 flex items-center"><i class="fa-solid fa-wand-magic-sparkles text-amber-500 mr-2"></i> Phân Tích Bài Thuyết Trình PPTX</h3>
+                        <div id="pptx-result-placeholder" class="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-3">
+                            <img src="https://placehold.co/400x300/e2e8f0/64748b?text=AI+PPTX+Center" class="max-w-[200px] opacity-75 rounded-xl border border-slate-200 shadow-inner" alt="Placeholder">
+                            <p class="text-sm text-slate-500 font-medium">Báo cáo tóm tắt cấu trúc slide và bộ từ mới từ PPTX sẽ tự động hiển thị tại đây.</p>
+                        </div>
+                        <div id="pptx-result-display" class="hidden flex-1 space-y-6 animate-fade-in">
+                            <div class="border-b border-slate-100 pb-4">
+                                <span class="bg-amber-50 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">Bóc tách PPTX thành công</span>
+                                <h4 id="pptx-analysis-title" class="text-xl font-bold mt-2 text-slate-800">Tên Slide PowerPoint</h4>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tóm lược nội dung Slide</h5>
+                                    <p id="pptx-analysis-summary" class="text-sm text-slate-600 leading-relaxed"></p>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div class="bg-amber-50/30 p-4 rounded-xl border border-amber-100">
+                                        <h5 class="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-circle-nodes mr-1.5"></i> Điểm ngữ pháp thuyết trình</h5>
+                                        <ul id="pptx-analysis-keypoints" class="text-xs text-slate-700 space-y-1.5 list-disc pl-4"></ul>
+                                    </div>
+                                    <div class="bg-orange-50/30 p-4 rounded-xl border border-orange-100">
+                                        <h5 class="text-xs font-bold text-orange-700 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-list-check mr-1.5"></i> Nhóm từ mới chọn lọc</h5>
+                                        <div id="pptx-analysis-vocab" class="space-y-2 max-h-[140px] overflow-y-auto pr-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Quick actions -->
+                            <div class="pt-4 border-t border-slate-100 flex flex-wrap gap-2 justify-between items-center">
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="startQuizArena()" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-gamepad"></i> Bắt đầu giải bài trắc nghiệm
+                                    </button>
+                                    <button id="btn-vocab-practice-pptx" onclick="practiceCurrentDocumentVocab()" class="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-book-bookmark"></i> Luyện từ vựng tài liệu
+                                    </button>
+                                </div>
+                                <button onclick="switchTab('practice')" class="text-xs text-slate-400 hover:text-slate-600">Xem câu hỏi <i class="fa-solid fa-arrow-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: VOCABULARY PRACTICE PRACTICE -->
+            <section id="tab-vocab-container" class="hidden space-y-6">
+                <!-- Theme selection screen -->
+                <div id="vocab-themes-view" class="space-y-6">
+                    <div>
+                        <h3 class="font-extrabold text-2xl text-slate-800 tracking-tight">Luyện Từ Vựng Theo Chủ Đề</h3>
+                        <p class="text-sm text-slate-500">Lựa chọn các chủ đề tiếng Anh thông dụng dưới đây hoặc bộ từ vựng tự động tạo từ tài liệu PDF/PPTX/Hình ảnh của bạn để ôn tập.</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" id="vocab-themes-grid">
+                        <!-- Rendered via Javascript (Both Prebuilt & Custom dynamic themes) -->
+                    </div>
+                </div>
+
+                <!-- Active studying workspace -->
+                <div id="vocab-study-view" class="hidden space-y-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex items-center space-x-3">
+                            <div class="p-3 rounded-xl text-white bg-gradient-to-r" id="active-theme-icon-container">
+                                <i id="active-theme-icon" class="fa-solid text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 id="active-theme-title" class="font-extrabold text-xl text-slate-800">Chủ đề từ vựng</h4>
+                                <p class="text-xs text-slate-500">Nhấp lật thẻ để xem giải nghĩa hoặc chọn tab làm bài kiểm tra.</p>
+                            </div>
+                        </div>
+                        <button onclick="goBackToThemes()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all border border-slate-200">
+                            <i class="fa-solid fa-arrow-left-long mr-1.5"></i> Đổi Chủ Đề Khác
+                        </button>
+                    </div>
+
+                    <!-- Learning & Practice tabs togglers -->
+                    <div class="flex border-b border-slate-200">
+                        <button onclick="switchVocabMode('flashcard')" id="vocab-mode-flashcard-btn" class="px-6 py-3 border-b-2 border-primary-500 text-primary-600 font-bold text-sm transition-all">
+                            <i class="fa-solid fa-layer-group mr-2"></i> Học Thẻ Từ Vựng (Flashcards)
+                        </button>
+                        <button onclick="switchVocabMode('quiz')" id="vocab-mode-quiz-btn" class="px-6 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-600 font-bold text-sm transition-all">
+                            <i class="fa-solid fa-list-check mr-2"></i> Kiểm Tra Nhanh (Quiz)
+                        </button>
+                    </div>
+
+                    <!-- Mode: Flashcard Display Panel -->
+                    <div id="vocab-flashcard-pane" class="space-y-6">
+                        <div class="flex justify-center py-6">
+                            <!-- Flip card structure -->
+                            <div onclick="toggleFlashcardFlip()" id="flashcard-container" class="flip-card w-full max-w-lg h-80 cursor-pointer select-none">
+                                <div class="flip-card-inner relative w-full h-full rounded-3xl shadow-xl border border-slate-200/80 transition-all duration-500">
+                                    <!-- FRONT OF THE CARD -->
+                                    <div class="flip-card-front bg-gradient-to-b from-white to-slate-50 p-8">
+                                        <span class="absolute top-4 right-4 text-[10px] uppercase font-bold tracking-wider text-primary-500 bg-primary-50 px-2.5 py-1 rounded-full"><i class="fa-regular fa-lightbulb"></i> Nhấp để lật</span>
+                                        <h2 id="card-front-word" class="text-4xl font-extrabold text-slate-800 tracking-tight text-center">Word</h2>
+                                        <button onclick="pronounceActiveWord(event)" class="mt-6 p-3 bg-primary-100 hover:bg-primary-200 text-primary-700 h-12 w-12 rounded-full flex items-center justify-center transition-all shadow-sm" title="Phát âm tiếng Anh">
+                                            <i class="fa-solid fa-volume-high text-lg"></i>
+                                        </button>
+                                        <p class="text-xs text-slate-400 mt-2">Ấn để nghe phát âm</p>
+                                    </div>
+                                    <!-- BACK OF THE CARD -->
+                                    <div class="flip-card-back bg-slate-900 text-white p-8">
+                                        <span class="absolute top-4 right-4 text-[10px] uppercase font-bold tracking-wider text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full"><i class="fa-solid fa-eye"></i> Định nghĩa</span>
+                                        <div class="text-center space-y-4 max-w-sm">
+                                            <p id="card-back-word" class="font-extrabold text-xl text-primary-400">Word</p>
+                                            <p id="card-back-meaning" class="text-base font-medium leading-relaxed text-slate-100">Định nghĩa tiếng Việt rõ ràng</p>
+                                            <div class="pt-4 border-t border-slate-850 text-left w-full">
+                                                <p class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Ví dụ ngữ cảnh</p>
+                                                <p id="card-back-example" class="text-sm italic text-slate-200 leading-relaxed">Ví dụ tiếng Anh</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Flashcard Controls -->
+                        <div class="flex justify-between items-center max-w-lg mx-auto bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                            <button onclick="prevFlashcard()" class="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5">
+                                <i class="fa-solid fa-chevron-left"></i> Trước
+                            </button>
+                            <span class="text-sm font-extrabold text-slate-500" id="flashcard-progress-indicator">1 / 6</span>
+                            <button onclick="nextFlashcard()" class="p-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm transition-all flex items-center gap-1.5 shadow-sm">
+                                Tiếp <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mode: Quiz Testing Display Panel -->
+                    <div id="vocab-quiz-pane" class="hidden bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <div>
+                                <h4 class="font-bold text-lg text-slate-800">Bài Kiểm Tra Trắc Nghiệm Chủ Đề</h4>
+                                <p class="text-xs text-slate-400">Chọn đáp án nghĩa đúng của các từ vựng tiếng Anh sau.</p>
+                            </div>
+                            <span class="text-emerald-600 font-extrabold text-lg" id="vocab-quiz-score-badge">0 / 0</span>
+                        </div>
+
+                        <!-- Quiz items container -->
+                        <div id="vocab-quiz-questions-list" class="space-y-8">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+
+                        <!-- Quiz footer controls -->
+                        <div class="pt-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <p id="vocab-quiz-status-text" class="text-sm font-semibold text-slate-500">Trả lời tất cả các câu hỏi trên để xem kết quả đánh giá.</p>
+                            <div class="flex space-x-3 shrink-0">
+                                <button onclick="gradeVocabQuiz()" id="btn-grade-vocab-quiz" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-md flex items-center gap-2">
+                                    <i class="fa-solid fa-check-double"></i> Nộp bài kiểm tra
+                                </button>
+                                <button onclick="generateVocabQuiz()" class="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-sm transition-all border border-slate-200">
+                                    Luyện Lại (Đổi đề)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: HISTORY VAULT -->
+            <section id="tab-history-container" class="hidden space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="font-extrabold text-2xl text-slate-800 tracking-tight">Thư Viện Học Tập Đã Lưu</h3>
+                        <p class="text-sm text-slate-500">Xem lại tóm tắt, từ vựng, hình ảnh, file PDF, PPTX và bộ đề thi bạn đã từng tải lên.</p>
+                    </div>
+                    <div class="flex items-center space-x-2 shrink-0">
+                        <select id="history-filter-type" onchange="renderHistoryTab()" class="p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 outline-none">
+                            <option value="all">Tất cả tài liệu</option>
+                            <option value="image">Định dạng hình ảnh</option>
+                            <option value="pdf">Định dạng PDF</option>
+                            <option value="pptx">Định dạng PPTX</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Database history item grid -->
+                <div id="history-items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Populated via Javascript -->
+                </div>
+            </section>
+
+            <!-- TAB: PRACTICE ARENA -->
+            <section id="tab-practice-container" class="hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    <!-- Quiz panel -->
+                    <div class="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[500px]">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
+                            <div>
+                                <span class="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider" id="practice-doc-type">Tài Liệu Đang Chọn</span>
+                                <h3 class="font-bold text-xl text-slate-800 mt-1 tracking-tight" id="practice-doc-title">Chưa chọn nội dung ôn tập</h3>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs text-slate-400 font-semibold uppercase">Điểm cao nhất</p>
+                                <p id="practice-score-badge" class="font-bold text-emerald-600 text-lg">0 / 0</p>
+                            </div>
+                        </div>
+
+                        <!-- Fallback message -->
+                        <div id="quiz-empty-fallback" class="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-4">
+                            <i class="fa-solid fa-person-circle-question text-5xl text-slate-300"></i>
+                            <h4 class="text-lg font-bold text-slate-700">Chưa tải lên hoặc chọn tài liệu nào để luyện tập</h4>
+                            <p class="text-sm text-slate-500 max-w-sm">Tải hình ảnh bài tập, tệp tin PDF hoặc PPTX tiếng Anh để AI thông minh giúp bạn soạn đề kiểm tra trắc nghiệm tức thì.</p>
+                            <div class="flex flex-wrap gap-2 justify-center">
+                                <button onclick="switchTab('image')" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl text-sm transition-all shadow">
+                                    <i class="fa-solid fa-camera mr-1"></i> Ảnh
+                                </button>
+                                <button onclick="switchTab('pdf')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all border border-slate-200">
+                                    <i class="fa-solid fa-file-pdf mr-1"></i> PDF
+                                </button>
+                                <button onclick="switchTab('pptx')" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl text-sm transition-all shadow">
+                                    <i class="fa-solid fa-file-powerpoint mr-1"></i> PPTX
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Active Quiz Container -->
+                        <div id="active-quiz-container" class="hidden flex-1 flex flex-col">
+                            <!-- Question container -->
+                            <div id="quiz-questions-list" class="flex-1 space-y-8 overflow-y-auto pr-2 max-h-[550px]">
+                                <!-- Injected dynamically via script -->
+                            </div>
+
+                            <!-- Grading button bar -->
+                            <div class="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+                                <div id="quiz-status-feedback" class="text-sm font-semibold text-slate-500">
+                                    Điền tất cả đáp án để xem giải thích chi tiết.
+                                </div>
+                                <div class="flex space-x-3 shrink-0">
+                                    <button id="btn-grade-quiz" onclick="gradeActiveQuiz()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-md flex items-center gap-2">
+                                        <i class="fa-solid fa-clipboard-check"></i> Nộp bài & Xem giải thích
+                                    </button>
+                                    <button onclick="resetQuizSubmission()" class="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-sm transition-all border border-slate-200">
+                                        Làm lại đề
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Follow-up AI Assistant chatbot -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-[550px]">
+                        <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center"><i class="fa-solid fa-comments text-indigo-500 mr-2"></i> Trợ Lý Hỏi Đáp Giáo Viên AI</h3>
+                        <p class="text-xs text-slate-400 mb-4">Bạn chưa hiểu rõ về ngữ pháp, từ vựng hay các câu hỏi trắc nghiệm? Hãy trò chuyện trực tiếp để được giải thích thêm!</p>
+                        
+                        <!-- Chat Box History -->
+                        <div id="chat-messages-container" class="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-4 mb-4 text-sm scroll-smooth">
+                            <div class="bg-indigo-50 text-indigo-950 p-3.5 rounded-2xl rounded-tl-none border border-indigo-100 max-w-[90%]">
+                                Chào bạn! Tôi là giáo viên tiếng Anh AI của bạn. Hãy thoải mái hỏi tôi về bất kỳ tài liệu hoặc ngữ pháp nào vừa phân tích nhé. 😊
+                            </div>
+                        </div>
+
+                        <!-- Typing form -->
+                        <div class="flex items-center space-x-2 shrink-0">
+                            <input type="text" id="chat-user-input" onkeydown="if(event.key === 'Enter') sendChatMessage()" placeholder="Ví dụ: Giải thích chi tiết cho tôi..." class="flex-1 p-3 border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl text-sm outline-none transition-all">
+                            <button onclick="sendChatMessage()" id="btn-send-chat" class="p-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<!-- Global toast alert -->
+<div id="toast" class="fixed top-5 right-5 z-[60] flex items-center p-4 rounded-xl shadow-xl transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-none">
+    <i id="toast-icon"></i>
+    <span id="toast-message" class="text-sm font-semibold">Thông báo thành công</span>
+</div>
+
+<!-- Custom confirmation modal structure (Replaces blocking JS confirm dialogs) -->
+<div id="custom-confirm-modal" class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-fade-in">
+        <div class="flex items-center space-x-3 text-amber-500">
+            <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
+            <h4 class="font-extrabold text-slate-800 text-lg" id="modal-title">Xác nhận</h4>
+        </div>
+        <p class="text-sm text-slate-500 leading-relaxed" id="modal-text">Nội dung xác nhận sẽ viết tại đây...</p>
+        <div class="flex justify-end space-x-3 pt-2">
+            <button onclick="closeCustomModal()" class="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all border border-slate-200">Hủy bỏ</button>
+            <button onclick="executeModalConfirm()" class="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow transition-all" id="modal-confirm-btn">Chấp nhận</button>
+        </div>
+    </div>
+</div>
+
+<!-- Floating progress screen layer for AI loading states -->
+<div id="ai-loading-screen" class="hidden fixed inset-0 z-[100] bg-slate-900/80 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center space-y-6 border border-slate-100">
+        <div class="relative w-24 h-24 mx-auto flex items-center justify-center">
+            <!-- Loading animation graphics -->
+            <div class="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-primary-500 border-t-transparent animate-spin"></div>
+            <i class="fa-solid fa-robot text-4xl text-primary-500 pulse-element"></i>
+        </div>
+        <div class="space-y-2">
+            <h4 class="text-xl font-bold text-slate-800">Trí Tuệ Nhân Tạo Đang Phân Tích</h4>
+            <p id="loading-status-text" class="text-sm text-slate-500 leading-relaxed">Đang gửi tài liệu của bạn đến hệ thống Gemini AI để tiến hành bóc tách thông minh...</p>
+        </div>
+        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div id="loading-progress-bar" class="bg-gradient-to-r from-sky-400 to-indigo-500 h-full w-[10%] transition-all duration-1000"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedImageFile = null;
+    let selectedImageBase64 = null;
+    let selectedPdfFile = null;
+    let selectedPptxFile = null;
+
+    // Trigger binding of drag & drop events on document load
+    window.onload = function() {
+        const imgDragZone = document.getElementById('image-drag-zone');
+        const imgInput = document.getElementById('image-file-input');
+        const pdfDragZone = document.getElementById('pdf-drag-zone');
+        const pdfInput = document.getElementById('pdf-file-input');
+        const pptxDragZone = document.getElementById('pptx-drag-zone');
+        const pptxInput = document.getElementById('pptx-file-input');
+
+        // Setup image events
+        imgDragZone.addEventListener('click', () => imgInput.click());
+        imgInput.addEventListener('change', (e) => handleImageSelection(e.target.files[0]));
+
+        imgDragZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            imgDragZone.classList.add('border-primary-500', 'bg-primary-50/20');
+        });
+        imgDragZone.addEventListener('dragleave', () => {
+            imgDragZone.classList.remove('border-primary-500', 'bg-primary-50/20');
+        });
+        imgDragZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            imgDragZone.classList.remove('border-primary-500', 'bg-primary-50/20');
+            if (e.dataTransfer.files.length > 0) {
+                handleImageSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Setup PDF events
+        pdfDragZone.addEventListener('click', () => pdfInput.click());
+        pdfInput.addEventListener('change', (e) => handlePdfSelection(e.target.files[0]));
+
+        pdfDragZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            pdfDragZone.classList.add('border-primary-500', 'bg-primary-50/20');
+        });
+        pdfDragZone.addEventListener('dragleave', () => {
+            pdfDragZone.classList.remove('border-primary-500', 'bg-primary-50/20');
+        });
+        pdfDragZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pdfDragZone.classList.remove('border-primary-500', 'bg-primary-50/20');
+            if (e.dataTransfer.files.length > 0) {
+                handlePdfSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Setup PPTX events
+        pptxDragZone.addEventListener('click', () => pptxInput.click());
+        pptxInput.addEventListener('change', (e) => handlePptxSelection(e.target.files[0]));
+
+        pptxDragZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            pptxDragZone.classList.add('border-amber-500', 'bg-amber-50/20');
+        });
+        pptxDragZone.addEventListener('dragleave', () => {
+            pptxDragZone.classList.remove('border-amber-500', 'bg-amber-50/20');
+        });
+        pptxDragZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pptxDragZone.classList.remove('border-amber-500', 'bg-amber-50/20');
+            if (e.dataTransfer.files.length > 0) {
+                handlePptxSelection(e.dataTransfer.files[0]);
+            }
+        });
+    };
+
+    function handleImageSelection(file) {
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showNotification("Tệp tải lên không phải là định dạng hình ảnh hợp lệ.", "error");
+            return;
+        }
+
+        selectedImageFile = file;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                // Compress down image size safely utilizing HTML5 Canvas before transmitting
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200;
+                const MAX_HEIGHT = 1200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                selectedImageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                
+                document.getElementById('image-preview').src = selectedImageBase64;
+                document.getElementById('image-preview-container').classList.remove('hidden');
+                document.getElementById('image-drag-zone').classList.add('hidden');
+
+                // Unlock Process button control
+                const btn = document.getElementById('btn-process-image');
+                btn.disabled = false;
+                btn.className = "w-full py-4 bg-primary-600 hover:bg-primary-700 cursor-pointer text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+                
+                showNotification("Ảnh được nén và chuẩn bị thành công!", "success");
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function clearSelectedImage() {
+        selectedImageBase64 = null;
+        selectedImageFile = null;
+        document.getElementById('image-file-input').value = '';
+        document.getElementById('image-preview-container').classList.add('hidden');
+        document.getElementById('image-drag-zone').classList.remove('hidden');
+
+        const btn = document.getElementById('btn-process-image');
+        btn.disabled = true;
+        btn.className = "w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+    }
+
+    async function handlePdfSelection(file) {
+        if (!file) return;
+        if (file.type !== 'application/pdf') {
+            showNotification("Tệp lựa chọn bắt buộc phải thuộc định dạng PDF.", "error");
+            return;
+        }
+
+        selectedPdfFile = file;
+        
+        // Show file loading progress indicators
+        document.getElementById('pdf-file-name').innerText = file.name;
+        document.getElementById('pdf-file-size').innerText = (file.size / 1024 / 1024).toFixed(2) + " MB";
+        
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdfDoc = await loadingTask.promise;
+            
+            document.getElementById('pdf-file-pages').innerText = pdfDoc.numPages;
+            
+            document.getElementById('pdf-meta-container').classList.remove('hidden');
+            document.getElementById('pdf-drag-zone').classList.add('hidden');
+            
+            const btn = document.getElementById('btn-process-pdf');
+            btn.disabled = false;
+            btn.className = "w-full py-4 bg-primary-600 hover:bg-primary-700 cursor-pointer text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+            
+            showNotification("Tải tệp tin PDF thành công!", "success");
+        } catch (e) {
+            console.error("Lỗi đọc PDF: ", e);
+            showNotification("Không thể phân tích PDF này.", "error");
+            clearSelectedPdf();
+        }
+    }
+
+    function clearSelectedPdf() {
+        selectedPdfFile = null;
+        document.getElementById('pdf-file-input').value = '';
+        document.getElementById('pdf-meta-container').classList.add('hidden');
+        document.getElementById('pdf-drag-zone').classList.remove('hidden');
+        
+        const btn = document.getElementById('btn-process-pdf');
+        btn.disabled = true;
+        btn.className = "w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+    }
+
+    async function extractPdfTextContent() {
+        if (!selectedPdfFile) return "";
+        try {
+            const arrayBuffer = await selectedPdfFile.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdfDoc = await loadingTask.promise;
+            
+            let fullText = "";
+            const pageLimit = Math.min(pdfDoc.numPages, 10); 
+            
+            for (let i = 1; i <= pageLimit; i++) {
+                const page = await pdfDoc.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += `--- PAGE ${i} ---\n` + pageText + "\n";
+            }
+            return fullText;
+        } catch (e) {
+            console.error("Lỗi trích xuất chữ PDF:", e);
+            return "";
+        }
+    }
+
+    // New PPTX Handlers
+    function handlePptxSelection(file) {
+        if (!file) return;
+        if (!file.name.endsWith('.pptx')) {
+            showNotification("Tệp lựa chọn bắt buộc phải thuộc định dạng PPTX.", "error");
+            return;
+        }
+
+        selectedPptxFile = file;
+        
+        document.getElementById('pptx-file-name').innerText = file.name;
+        document.getElementById('pptx-file-size').innerText = (file.size / 1024 / 1024).toFixed(2) + " MB";
+        
+        document.getElementById('pptx-meta-container').classList.remove('hidden');
+        document.getElementById('pptx-drag-zone').classList.add('hidden');
+        
+        const btn = document.getElementById('btn-process-pptx');
+        btn.disabled = false;
+        btn.className = "w-full py-4 bg-amber-600 hover:bg-amber-700 cursor-pointer text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+        
+        showNotification("Tải tệp tin PPTX thuyết trình thành công!", "success");
+    }
+
+    function clearSelectedPptx() {
+        selectedPptxFile = null;
+        document.getElementById('pptx-file-input').value = '';
+        document.getElementById('pptx-meta-container').classList.add('hidden');
+        document.getElementById('pptx-drag-zone').classList.remove('hidden');
+        
+        const btn = document.getElementById('btn-process-pptx');
+        btn.disabled = true;
+        btn.className = "w-full py-4 bg-slate-400 cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2";
+    }
+
+    async function extractPptxTextContent(file) {
+        try {
+            const jszip = new JSZip();
+            const zip = await jszip.loadAsync(file);
+            let fullText = "";
+            let slideNum = 1;
+            
+            while (true) {
+                const slidePath = `ppt/slides/slide${slideNum}.xml`;
+                const slideFile = zip.file(slidePath);
+                if (!slideFile) break;
+                
+                const slideXmlText = await slideFile.async("string");
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(slideXmlText, "application/xml");
+                
+                // Read text elements <a:t>
+                const textNodes = xmlDoc.getElementsByTagName("a:t");
+                let slideText = "";
+                for (let i = 0; i < textNodes.length; i++) {
+                    slideText += textNodes[i].textContent + " ";
+                }
+                
+                if (slideText.trim()) {
+                    fullText += `--- SLIDE ${slideNum} ---\n` + slideText.trim() + "\n";
+                }
+                slideNum++;
+            }
+            return fullText;
+        } catch (e) {
+            console.error("Lỗi bóc tách PPTX:", e);
+            throw new Error("Không thể trích xuất văn bản từ slide PPTX này. File có thể bị hỏng hoặc bảo mật.");
+        }
+    }
+</script>
+
+<script>
+    async function requestGeminiModel(payload) {
+        const apiKey = ""; // Will be injected by system
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+        let attempts = 0;
+        const maxAttempts = 5;
+        let baseDelay = 1000;
+
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    return await response.json();
+                } else {
+                    const errText = await response.text();
+                    console.warn(`Attempt ${attempts + 1} failed: ${response.status} - ${errText}`);
+                }
+            } catch (e) {
+                console.warn(`Network failure on attempt ${attempts + 1}:`, e);
+            }
+            attempts++;
+            if (attempts < maxAttempts) {
+                const delay = baseDelay * Math.pow(2, attempts);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        throw new Error("Không thể kết nối đến máy chủ Gemini AI. Hãy thử lại sau ít phút.");
+    }
+
+    async function processSelectedImage() {
+        if (!selectedImageBase64) return;
+        
+        setLoadingState(true, "Đang nhận diện hình ảnh và thiết lập câu hỏi tương đương từ AI...");
+        
+        try {
+            const rawBase64 = selectedImageBase64.split(',')[1];
+            const focusMode = document.getElementById('image-focus-mode').value;
+            
+            let systemPrompt = "Bạn là trợ lý tiếng Anh EduAI cao cấp, thân thiện và am hiểu phương pháp giảng dạy ngôn ngữ quốc tế.";
+            let userPrompt = `Hãy phân tích hình ảnh đính kèm (có thể là bài tập viết tay, đề thi in, hoặc phong cảnh). Trích xuất các nội dung tiếng Anh quan trọng theo tiêu chuẩn sau:
+            Focus học tập được yêu cầu: ${focusMode}.
+            
+            Hãy trả về một phản hồi JSON cấu trúc hoàn chỉnh bằng tiếng Việt. Mẫu schema bắt buộc như sau:
+            {
+              "title": "Tên chủ đề học tập chính (Ví dụ: Từ vựng Thì Hiện Tại Đơn)",
+              "summary": "Tóm tắt ngắn gọn những gì bạn thấy trong ảnh và kiến thức ngữ pháp cốt lõi ở trong đó",
+              "keyPoints": [
+                 "Điểm kiến thức quan trọng thứ nhất rút ra",
+                 "Điểm kiến thức quan trọng thứ hai rút ra"
+              ],
+              "vocabulary": [
+                 {"word": "từ mới", "meaning": "nghĩa tiếng Việt tương đương", "example": "Ví dụ đặt câu tiếng Anh"}
+              ],
+              "questions": [
+                 {
+                   "question": "Câu hỏi trắc nghiệm tương tự để rèn luyện (chỉ sử dụng tiếng Anh, tuyệt đối không dùng tiếng Việt trong câu hỏi)",
+                   "options": ["Option A", "Option B", "Option C", "Option D"],
+                   "correctAnswer": "A hoặc B hoặc C hoặc D",
+                   "explanation": "Lời giải thích chi tiết tại sao chọn đáp án này, dịch nghĩa bằng tiếng Việt dễ hiểu"
+                 }
+              ]
+            }
+            Tuyđối đảm bảo tạo ra chính xác 5 câu hỏi trắc nghiệm tương tự cao cấp dựa trên ngữ cảnh bức ảnh. Trả về đúng JSON.`;
+
+            const payload = {
+                contents: [{
+                    role: "user",
+                    parts: [
+                        { text: userPrompt },
+                        { inlineData: { mimeType: "image/jpeg", data: rawBase64 } }
+                    ]
+                }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            summary: { type: "STRING" },
+                            keyPoints: { type: "ARRAY", items: { type: "STRING" } },
+                            vocabulary: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        word: { type: "STRING" },
+                                        meaning: { type: "STRING" },
+                                        example: { type: "STRING" }
+                                    },
+                                    required: ["word", "meaning"]
+                                }
+                            },
+                            questions: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        question: { type: "STRING" },
+                                        options: { type: "ARRAY", items: { type: "STRING" } },
+                                        correctAnswer: { type: "STRING" },
+                                        explanation: { type: "STRING" }
+                                    },
+                                    required: ["question", "options", "correctAnswer", "explanation"]
+                                }
+                            }
+                        },
+                        required: ["title", "summary", "keyPoints", "vocabulary", "questions"]
+                    }
+                }
+            };
+
+            const response = await requestGeminiModel(payload);
+            const parsedResult = JSON.parse(response.candidates[0].content.parts[0].text);
+            
+            const newRecord = {
+                id: "record_" + Date.now(),
+                type: "image",
+                title: parsedResult.title || "Tài liệu Ảnh Luyện Tập",
+                fileName: selectedImageFile ? selectedImageFile.name : "anh-gửi.jpg",
+                fileData: selectedImageBase64, 
+                timestamp: Date.now(),
+                analysis: parsedResult,
+                chats: []
+            };
+
+            await saveHistoryRecord(newRecord);
+            
+            currentAnalysis = newRecord;
+            displayImageAnalysis(newRecord);
+            
+            showNotification("Đã phân tích ảnh thành công và tạo câu hỏi!", "success");
+        } catch (e) {
+            console.error("Lỗi phân tích ảnh AI:", e);
+            showNotification(e.message || "Gặp lỗi khi phân tích hình ảnh này.", "error");
+        } finally {
+            setLoadingState(false);
+        }
+    }
+
+    async function processSelectedPdf() {
+        if (!selectedPdfFile) return;
+
+        setLoadingState(true, "Đang tiến hành trích văn bản và phân tích tóm lược nội dung sách...");
+        
+        try {
+            const extractedText = await extractPdfTextContent();
+            if (!extractedText || extractedText.trim().length < 15) {
+                throw new Error("Không thể bóc tách nội dung chữ trong tệp PDF này. Vui lòng chọn tệp chất lượng tốt hơn.");
+            }
+
+            const questionCount = parseInt(document.getElementById('pdf-question-count').value) || 5;
+
+            let systemPrompt = "Bạn là chuyên gia thẩm định ngôn ngữ tiếng Anh cao cấp và biên soạn giáo trình chuẩn hóa.";
+            let userPrompt = `Hãy đọc văn bản tiếng Anh sau đây được bóc tách từ file tài liệu của học sinh. 
+            Phân tích những điểm quan trọng nhất, tóm tắt nội dung, tổng hợp từ vựng và thiết kế đúng ${questionCount} câu hỏi trắc nghiệm tiếng Anh tương ứng để ôn tập.
+            
+            TÀI LIỆU PDF TRÍCH XUẤT:
+            ${extractedText.substring(0, 8000)}
+            
+            Vui lòng trả về kết quả bằng định dạng JSON tiếng Việt hoàn chỉnh. Mẫu cấu trúc bắt buộc:
+            {
+              "title": "Tên sách hoặc tiêu đề chương của văn bản này (Ví dụ: Bài Học Về Đại Từ Quan Hệ)",
+              "summary": "Tóm tắt súc tích nội dung chính của tài liệu PDF này bằng tiếng Việt",
+              "keyPoints": [
+                 "Ý chính quan trọng nhất",
+                 "Ý chính quan trọng tiếp theo"
+              ],
+              "vocabulary": [
+                 {"word": "từ vựng mới", "meaning": "định nghĩa tiếng Việt tương xứng", "example": "câu ví dụ tiếng Anh thực tế"}
+              ],
+              "questions": [
+                 {
+                   "question": "Câu hỏi trắc nghiệm tương ứng bằng tiếng Anh dựa trên văn bản này (không dịch tiếng Việt trong câu hỏi)",
+                   "options": ["Lựa chọn A", "Lựa chọn B", "Lựa chọn C", "Lựa chọn D"],
+                   "correctAnswer": "A hoặc B hoặc C hoặc D",
+                   "explanation": "Lời giải thích chi tiết vì sao chọn phương án này"
+                 }
+              ]
+            }
+            Chỉ trả về chuỗi JSON thô, không đính kèm Markdown hay giải thích ngoài luồng.`;
+
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            summary: { type: "STRING" },
+                            keyPoints: { type: "ARRAY", items: { type: "STRING" } },
+                            vocabulary: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        word: { type: "STRING" },
+                                        meaning: { type: "STRING" },
+                                        example: { type: "STRING" }
+                                    },
+                                    required: ["word", "meaning"]
+                                }
+                            },
+                            questions: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        question: { type: "STRING" },
+                                        options: { type: "ARRAY", items: { type: "STRING" } },
+                                        correctAnswer: { type: "STRING" },
+                                        explanation: { type: "STRING" }
+                                    },
+                                    required: ["question", "options", "correctAnswer", "explanation"]
+                                }
+                            }
+                        },
+                        required: ["title", "summary", "keyPoints", "vocabulary", "questions"]
+                    }
+                }
+            };
+
+            const response = await requestGeminiModel(payload);
+            const parsedResult = JSON.parse(response.candidates[0].content.parts[0].text);
+
+            const newRecord = {
+                id: "record_" + Date.now(),
+                type: "pdf",
+                title: parsedResult.title || "Tài liệu PDF Đã Phân Tích",
+                fileName: selectedPdfFile.name,
+                fileData: null, 
+                timestamp: Date.now(),
+                analysis: parsedResult,
+                chats: []
+            };
+
+            await saveHistoryRecord(newRecord);
+            
+            currentAnalysis = newRecord;
+            displayPdfAnalysis(newRecord);
+            
+            showNotification("Phân tích PDF hoàn tất! Bắt đầu luyện bài tập.", "success");
+        } catch (e) {
+            console.error("Lỗi phân tích PDF AI:", e);
+            showNotification(e.message || "Gặp sự cố khi đọc PDF.", "error");
+        } finally {
+            setLoadingState(false);
+        }
+    }
+
+    // New PPTX Processing Function
+    async function processSelectedPptx() {
+        if (!selectedPptxFile) return;
+
+        setLoadingState(true, "Đang trích xuất slide và phân tích nội dung PPTX trình chiếu...");
+        
+        try {
+            const extractedText = await extractPptxTextContent(selectedPptxFile);
+            if (!extractedText || extractedText.trim().length < 15) {
+                throw new Error("Không thể bóc tách nội dung văn bản từ tệp PPTX này.");
+            }
+
+            const questionCount = parseInt(document.getElementById('pptx-question-count').value) || 5;
+
+            let systemPrompt = "Bạn là chuyên gia thẩm định ngôn ngữ tiếng Anh cao cấp và biên soạn giáo trình, bài giảng kỹ thuật số.";
+            let userPrompt = `Hãy đọc văn bản tiếng Anh sau đây được bóc tách từ các trang slide trình chiếu PowerPoint của học sinh. 
+            Phân tích những điểm quan trọng nhất, tóm tắt nội dung slide, tổng hợp từ vựng hữu ích và thiết kế đúng ${questionCount} câu hỏi trắc nghiệm tiếng Anh tương ứng để ôn tập.
+            
+            TÀI LIỆU PPTX TRÍCH XUẤT:
+            ${extractedText.substring(0, 8000)}
+            
+            Vui lòng trả về kết quả bằng định dạng JSON tiếng Việt hoàn chỉnh. Mẫu cấu trúc bắt buộc:
+            {
+              "title": "Tên chủ đề hoặc tiêu đề bài thuyết trình này (Ví dụ: Kỹ năng Pitching bằng Tiếng Anh)",
+              "summary": "Tóm tắt súc tích nội dung chính của các slide này bằng tiếng Việt",
+              "keyPoints": [
+                 "Ý chính quan trọng nhất trong bài trình bày",
+                 "Ý chính quan trọng tiếp theo"
+              ],
+              "vocabulary": [
+                 {"word": "từ vựng mới", "meaning": "định nghĩa tiếng Việt tương xứng", "example": "câu ví dụ tiếng Anh thực tế"}
+              ],
+              "questions": [
+                 {
+                   "question": "Câu hỏi trắc nghiệm tương ứng bằng tiếng Anh dựa trên slide này (không dịch tiếng Việt trong câu hỏi)",
+                   "options": ["Lựa chọn A", "Lựa chọn B", "Lựa chọn C", "Lựa chọn D"],
+                   "correctAnswer": "A hoặc B hoặc C hoặc D",
+                   "explanation": "Lời giải thích chi tiết vì sao chọn phương án này"
+                 }
+              ]
+            }
+            Chỉ trả về chuỗi JSON thô, không đính kèm Markdown hay giải thích ngoài luồng.`;
+
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            summary: { type: "STRING" },
+                            keyPoints: { type: "ARRAY", items: { type: "STRING" } },
+                            vocabulary: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        word: { type: "STRING" },
+                                        meaning: { type: "STRING" },
+                                        example: { type: "STRING" }
+                                    },
+                                    required: ["word", "meaning"]
+                                }
+                            },
+                            questions: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        question: { type: "STRING" },
+                                        options: { type: "ARRAY", items: { type: "STRING" } },
+                                        correctAnswer: { type: "STRING" },
+                                        explanation: { type: "STRING" }
+                                    },
+                                    required: ["question", "options", "correctAnswer", "explanation"]
+                                }
+                            }
+                        },
+                        required: ["title", "summary", "keyPoints", "vocabulary", "questions"]
+                    }
+                }
+            };
+
+            const response = await requestGeminiModel(payload);
+            const parsedResult = JSON.parse(response.candidates[0].content.parts[0].text);
+
+            const newRecord = {
+                id: "record_" + Date.now(),
+                type: "pptx",
+                title: parsedResult.title || "Tài liệu PPTX Đã Phân Tích",
+                fileName: selectedPptxFile.name,
+                fileData: null, 
+                timestamp: Date.now(),
+                analysis: parsedResult,
+                chats: []
+            };
+
+            await saveHistoryRecord(newRecord);
+            
+            currentAnalysis = newRecord;
+            displayPptxAnalysis(newRecord);
+            
+            showNotification("Phân tích PPTX slide hoàn tất! Bắt đầu luyện bài tập.", "success");
+        } catch (e) {
+            console.error("Lỗi phân tích PPTX AI:", e);
+            showNotification(e.message || "Gặp sự cố khi đọc tệp PPTX.", "error");
+        } finally {
+            setLoadingState(false);
+        }
+    }
+
+    function setLoadingState(loading, text = "AI đang phân tích...") {
+        isProcessing = loading;
+        const screen = document.getElementById('ai-loading-screen');
+        const txt = document.getElementById('loading-status-text');
+        const bar = document.getElementById('loading-progress-bar');
+        
+        if (loading) {
+            txt.innerText = text;
+            screen.classList.remove('hidden');
+            bar.style.width = "10%";
+            let progress = 10;
+            window.loadingInterval = setInterval(() => {
+                progress += Math.floor(Math.random() * 15) + 5;
+                if (progress > 95) progress = 95;
+                bar.style.width = progress + "%";
+            }, 800);
+        } else {
+            clearInterval(window.loadingInterval);
+            bar.style.width = "100%";
+            setTimeout(() => {
+                screen.classList.add('hidden');
+            }, 300);
+        }
+    }
+</script>
+
+<script>
+    // Global voice speak helper to guarantee seamless pronunciation even in sandboxed iframes
+    function pronounceText(text) {
+        if (!text) return;
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel(); // Force release the queue immediately
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.85; 
+                window.speechSynthesis.speak(utterance);
+            } catch (err) {
+                console.error("TTS Speech synthesis trigger error:", err);
+            }
+        } else {
+            showNotification("Trình duyệt không hỗ trợ phát âm tiếng Anh.", "warning");
+        }
+    }
+
+    // Robust Answer Parser Engine to fix mismatched grading checks from AI raw strings
+    function getResolvedCorrectLetter(correctAnswer, options) {
+        if (!correctAnswer) return 'A'; // Default safe fallback
+        const cleanedCorrect = correctAnswer.trim().toUpperCase();
+        const optLetters = ['A', 'B', 'C', 'D'];
+        
+        // 1. If AI directly returned a single clean letter ('A', 'B', 'C', 'D')
+        if (cleanedCorrect.length === 1 && optLetters.includes(cleanedCorrect)) {
+            return cleanedCorrect;
+        }
+        
+        // 2. If it starts with 'A.', 'B.', 'A)', 'B)' or has prefixes e.g. "A. Option Text"
+        for (let l of optLetters) {
+            if (cleanedCorrect.startsWith(l + '.') || 
+                cleanedCorrect.startsWith(l + ')') || 
+                cleanedCorrect.startsWith(l + ' ') ||
+                cleanedCorrect.startsWith(l + '')) {
+                return l;
+            }
+        }
+        
+        // 3. If AI returned the exact option text, locate its matching option index
+        if (options && Array.isArray(options)) {
+            const lowerCorrect = correctAnswer.trim().toLowerCase();
+            for (let i = 0; i < options.length; i++) {
+                if (options[i].trim().toLowerCase() === lowerCorrect) {
+                    return optLetters[i];
+                }
+            }
+            // Check substring matches
+            for (let i = 0; i < options.length; i++) {
+                const optText = options[i].trim().toLowerCase();
+                if (optText.includes(lowerCorrect) || lowerCorrect.includes(optText)) {
+                    return optLetters[i];
+                }
+            }
+        }
+        
+        // 4. Default check of first character
+        const firstChar = cleanedCorrect.charAt(0);
+        if (optLetters.includes(firstChar)) {
+            return firstChar;
+        }
+        
+        return 'A'; // Last resort fallback
+    }
+
+    async function initAppUI() {
+        const display = document.getElementById('user-id-display');
+        if (window.currentUser) {
+            display.innerText = window.currentUser.uid;
+        } else {
+            display.innerText = "chế độ offline";
+        }
+
+        await loadAllHistory();
+        updateDashboardStats();
+    }
+
+    async function saveHistoryRecord(record) {
+        // Look for existing and replace, otherwise add
+        const idx = historyList.findIndex(item => item.id === record.id);
+        if (idx !== -1) {
+            historyList[idx] = record;
+        } else {
+            historyList.unshift(record);
+        }
+
+        if (window.db && window.currentUser) {
+            try {
+                const userId = window.currentUser.uid;
+                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', userId, 'history', record.id);
+                await window.setDoc(docRef, record);
+                console.log("Saved securely on Firestore Cloud:", record.id);
+            } catch (e) {
+                console.error("Firestore Save Fail, fall back locally: ", e);
+            }
+        } else {
+            localStorage.setItem('eduai_history_local', JSON.stringify(historyList));
+        }
+        
+        updateDashboardStats();
+    }
+
+    async function loadAllHistory() {
+        if (window.db && window.currentUser) {
+            try {
+                const userId = window.currentUser.uid;
+                const colRef = window.collection(window.db, 'artifacts', window.appId, 'users', userId, 'history');
+                const querySnapshot = await window.getDocs(colRef);
+                
+                let fetched = [];
+                querySnapshot.forEach((doc) => {
+                    fetched.push(doc.data());
+                });
+
+                fetched.sort((a, b) => b.timestamp - a.timestamp);
+                historyList = fetched;
+            } catch (e) {
+                console.error("Firestore Fetch Fail, fallback to local cache: ", e);
+                loadLocalBackup();
+            }
+        } else {
+            loadLocalBackup();
+        }
+    }
+
+    function loadLocalBackup() {
+        const cached = localStorage.getItem('eduai_history_local');
+        if (cached) {
+            try {
+                historyList = JSON.parse(cached);
+            } catch (e) {
+                historyList = [];
+            }
+        }
+    }
+
+    function updateDashboardStats() {
+        const totalImages = historyList.filter(r => r.type === 'image').length;
+        const totalPdfs = historyList.filter(r => r.type === 'pdf').length;
+        const totalPptxs = historyList.filter(r => r.type === 'pptx').length;
+        
+        let totalQuestions = 0;
+        let totalGraded = 0;
+        
+        historyList.forEach(item => {
+            if (item.analysis && item.analysis.questions) {
+                totalQuestions += item.analysis.questions.length;
+            }
+            if (item.gradedCount) {
+                totalGraded += item.gradedCount;
+            }
+        });
+
+        document.getElementById('stat-images-count').innerText = totalImages;
+        document.getElementById('stat-pdf-count').innerText = totalPdfs;
+        document.getElementById('stat-pptx-count').innerText = totalPptxs;
+        document.getElementById('stat-questions-count').innerText = totalQuestions;
+        document.getElementById('stat-completed-quiz').innerText = totalGraded;
+
+        // Render Recent uploads onto dashboard
+        const listDiv = document.getElementById('dashboard-recent-activities');
+        if (historyList.length === 0) {
+            listDiv.innerHTML = `<div class="text-center py-10">Bạn chưa có hoạt động nào. Hãy tải lên ảnh, PDF hoặc PPTX để bắt đầu!</div>`;
+            return;
+        }
+
+        let html = "";
+        const recent = historyList.slice(0, 4);
+        recent.forEach(item => {
+            const dateStr = new Date(item.timestamp).toLocaleString('vi-VN', {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'});
+            let icon = 'fa-file-invoice text-indigo-500';
+            if (item.type === 'image') {
+                icon = 'fa-image text-sky-500';
+            } else if (item.type === 'pdf') {
+                icon = 'fa-file-pdf text-rose-500';
+            } else if (item.type === 'pptx') {
+                icon = 'fa-file-powerpoint text-orange-500';
+            }
+            
+            html += `
+            <div class="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all border border-slate-200/60">
+                <div class="flex items-center space-x-3 truncate">
+                    <span class="p-2 bg-white rounded-lg shadow-sm shrink-0"><i class="fa-solid ${icon} text-lg"></i></span>
+                    <div class="truncate">
+                        <p class="font-semibold text-slate-800 text-sm truncate">${item.title}</p>
+                        <p class="text-xs text-slate-400 font-medium">${item.fileName} • ${dateStr}</p>
+                    </div>
+                </div>
+                <button onclick="viewHistoryItem('${item.id}')" class="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all flex items-center shrink-0">
+                    Xem lại <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                </button>
+            </div>`;
+        });
+        listDiv.innerHTML = html;
+    }
+
+    async function resetApplicationData() {
+        showCustomModal(
+            "Xác nhận đặt lại",
+            "Bạn có chắc chắn muốn làm mới toàn bộ bộ nhớ cục bộ và lịch sử? Hành động này không thể hoàn tác.",
+            "Đặt lại ngay",
+            async () => {
+                localStorage.removeItem('eduai_history_local');
+                historyList = [];
+                currentAnalysis = null;
+                updateDashboardStats();
+                switchTab('dashboard');
+                showNotification("Lịch sử học tập đã được thiết lập lại thành công.", "success");
+            }
+        );
+    }
+</script>
+
+<script>
+    function switchTab(tabName) {
+        activeTab = tabName;
+        
+        document.getElementById('tab-dashboard-container').classList.add('hidden');
+        document.getElementById('tab-image-container').classList.add('hidden');
+        document.getElementById('tab-pdf-container').classList.add('hidden');
+        document.getElementById('tab-pptx-container').classList.add('hidden');
+        document.getElementById('tab-history-container').classList.add('hidden');
+        document.getElementById('tab-practice-container').classList.add('hidden');
+        document.getElementById('tab-vocab-container').classList.add('hidden');
+
+        const navButtons = ['dashboard', 'image', 'pdf', 'pptx', 'history', 'practice', 'vocab'];
+        navButtons.forEach(btn => {
+            const el = document.getElementById(`btn-tab-${btn}`);
+            if (el) {
+                el.className = "w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all duration-200";
+            }
+        });
+
+        document.getElementById(`tab-${tabName}-container`).classList.remove('hidden');
+        
+        const activeBtn = document.getElementById(`btn-tab-${tabName}`);
+        if (activeBtn) {
+            activeBtn.className = "w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-200 bg-primary-600 text-white";
+        }
+
+        const pageTitleText = {
+            'dashboard': 'Trang Tổng Quan Học Tập',
+            'image': 'Trích Xuất Hình Ảnh Học Tập',
+            'pdf': 'Phân Tích Tệp Tin Sách PDF',
+            'pptx': 'Phân Tích File Trình Chiếu PPTX',
+            'history': 'Thư Viện Bài Luyện Lưu Trữ',
+            'vocab': 'Luyện Từ Vựng Chủ Đề',
+            'practice': 'Trung Tâm Trắc Nghiệm Đề Thi'
+        };
+        document.getElementById('page-title').innerText = pageTitleText[tabName] || 'Học tập';
+
+        if (tabName === 'history') {
+            renderHistoryTab();
+        } else if (tabName === 'practice') {
+            updatePracticeAreaUI();
+        } else if (tabName === 'vocab') {
+            initVocabThemesGrid();
+        }
+    }
+
+    // Modern clickable interactive vocabulary item generation with automatic speech trigger on click
+    function makeVocabBadgeHtml(vocabArray) {
+        if (!vocabArray || vocabArray.length === 0) return "<p class='text-xs text-slate-400'>Không trích xuất được từ mới nào.</p>";
+        return vocabArray.map(v => {
+            // Secure escaping of apostrophes in English vocabulary lists
+            const escapedWord = v.word.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            return `
+            <div onclick="pronounceText('${escapedWord}')" class="p-3 bg-white hover:bg-slate-50 border border-slate-200/70 hover:border-primary-500 rounded-lg space-y-1 shadow-xs cursor-pointer transition-all transform hover:-translate-y-0.5" title="Nhấp nghe phát âm chuẩn bản ngữ">
+                <p class="font-bold text-slate-800 text-sm flex items-center gap-1.5 text-primary-600 hover:text-primary-700">
+                    <i class="fa-solid fa-volume-high text-xs text-primary-500"></i> ${v.word}
+                </p>
+                <p class="text-xs text-slate-500 italic"><strong class="text-slate-700 font-semibold">Nghĩa:</strong> ${v.meaning}</p>
+                ${v.example ? `<p class="text-[10px] text-slate-400 truncate" title="${v.example}"><strong class="text-slate-500 font-semibold">Ví dụ:</strong> ${v.example}</p>` : ''}
+            </div>
+            `;
+        }).join('');
+    }
+
+    function displayImageAnalysis(record) {
+        const data = record.analysis;
+        
+        document.getElementById('image-result-placeholder').classList.add('hidden');
+        document.getElementById('image-result-display').classList.remove('hidden');
+
+        document.getElementById('img-analysis-title').innerText = data.title || "Chủ đề học qua Ảnh";
+        document.getElementById('img-analysis-summary').innerText = data.summary || "Chưa có tóm tắt.";
+        
+        const keyPointsList = document.getElementById('img-analysis-keypoints');
+        keyPointsList.innerHTML = data.keyPoints ? data.keyPoints.map(kp => `<li>${kp}</li>`).join('') : "<li>Kiến thức tổng hợp.</li>";
+
+        const vocabBox = document.getElementById('img-analysis-vocab');
+        vocabBox.innerHTML = makeVocabBadgeHtml(data.vocabulary);
+    }
+
+    function displayPdfAnalysis(record) {
+        const data = record.analysis;
+        
+        document.getElementById('pdf-result-placeholder').classList.add('hidden');
+        document.getElementById('pdf-result-display').classList.remove('hidden');
+
+        document.getElementById('pdf-analysis-title').innerText = data.title || "Chủ đề học qua PDF";
+        document.getElementById('pdf-analysis-summary').innerText = data.summary || "Chưa có tóm tắt.";
+
+        const keyPointsList = document.getElementById('pdf-analysis-keypoints');
+        keyPointsList.innerHTML = data.keyPoints ? data.keyPoints.map(kp => `<li>${kp}</li>`).join('') : "<li>Nội dung tổng quát.</li>";
+
+        const vocabBox = document.getElementById('pdf-analysis-vocab');
+        vocabBox.innerHTML = makeVocabBadgeHtml(data.vocabulary);
+    }
+
+    // New PPTX analysis display results UI
+    function displayPptxAnalysis(record) {
+        const data = record.analysis;
+        
+        document.getElementById('pptx-result-placeholder').classList.add('hidden');
+        document.getElementById('pptx-result-display').classList.remove('hidden');
+
+        document.getElementById('pptx-analysis-title').innerText = data.title || "Chủ đề học qua PPTX";
+        document.getElementById('pptx-analysis-summary').innerText = data.summary || "Chưa có tóm tắt.";
+
+        const keyPointsList = document.getElementById('pptx-analysis-keypoints');
+        keyPointsList.innerHTML = data.keyPoints ? data.keyPoints.map(kp => `<li>${kp}</li>`).join('') : "<li>Nội dung slide tổng quát.</li>";
+
+        const vocabBox = document.getElementById('pptx-analysis-vocab');
+        vocabBox.innerHTML = makeVocabBadgeHtml(data.vocabulary);
+    }
+</script>
+
+<script>
+    // Action helper to transition and practice vocab directly from current analysis record
+    function practiceCurrentDocumentVocab() {
+        if (!currentAnalysis || !currentAnalysis.analysis || !currentAnalysis.analysis.vocabulary || currentAnalysis.analysis.vocabulary.length === 0) {
+            showNotification("Tài liệu hiện tại không chứa từ vựng nào học được để tạo chủ đề luyện tập.", "warning");
+            return;
+        }
+        const themeKey = `history_${currentAnalysis.id}`;
+        switchTab('vocab');
+        startVocabTheme(themeKey);
+    }
+
+    function initVocabThemesGrid() {
+        const grid = document.getElementById('vocab-themes-grid');
+        grid.innerHTML = "";
+
+        // SECTION 1: SYSTEM BUILT-IN THEMES
+        const prebuiltHeader = document.createElement('div');
+        prebuiltHeader.className = "col-span-full border-b border-slate-200 pb-2 mb-2";
+        prebuiltHeader.innerHTML = `<h4 class="font-bold text-slate-700 text-lg flex items-center"><i class="fa-solid fa-layer-group text-primary-500 mr-2"></i> Chủ Đề Từ Vựng Hệ Thống</h4>`;
+        grid.appendChild(prebuiltHeader);
+
+        // Render Prebuilt
+        Object.keys(prebuiltVocabThemes).forEach(key => {
+            const theme = prebuiltVocabThemes[key];
+            const card = document.createElement('div');
+            card.className = "bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between p-6";
+            
+            card.innerHTML = `
+                <div class="space-y-4">
+                    <div class="h-12 w-12 rounded-xl bg-gradient-to-r ${theme.bg} text-white flex items-center justify-center shadow-md">
+                        <i class="fa-solid ${theme.icon} text-xl"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h4 class="font-extrabold text-lg text-slate-800 leading-snug">${theme.title}</h4>
+                        <p class="text-xs text-slate-500 leading-relaxed">${theme.description}</p>
+                    </div>
+                    <div class="text-xs font-semibold text-primary-500 bg-primary-50 inline-block px-2.5 py-1 rounded-full border border-primary-100 w-fit">
+                        <i class="fa-solid fa-layer-group"></i> ${theme.words.length} từ thiết yếu
+                    </div>
+                </div>
+                <button onclick="startVocabTheme('${key}')" class="mt-6 w-full py-3 bg-gradient-to-r ${theme.bg} hover:opacity-95 text-white font-bold text-sm rounded-xl shadow transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5">
+                    Học ngay <i class="fa-solid fa-circle-play text-xs"></i>
+                </button>
+            `;
+            grid.appendChild(card);
+        });
+
+        // SECTION 2: CUSTOM DYNAMIC VOCAB THEMES EXTRACTED FROM HISTORY (PDF/IMAGES/PPTX)
+        const customHeader = document.createElement('div');
+        customHeader.className = "col-span-full border-b border-slate-200 pb-2 mt-8 mb-2";
+        customHeader.innerHTML = `<h4 class="font-bold text-slate-700 text-lg flex items-center"><i class="fa-solid fa-folder-plus text-indigo-500 mr-2"></i> Từ Vựng Tự Động Trích Từ Tài Liệu Của Bạn</h4>`;
+        grid.appendChild(customHeader);
+
+        const customItems = historyList.filter(item => item.analysis && item.analysis.vocabulary && item.analysis.vocabulary.length > 0);
+
+        if (customItems.length === 0) {
+            const emptyCard = document.createElement('div');
+            emptyCard.className = "col-span-full text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-6";
+            emptyCard.innerHTML = `
+                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                <h5 class="text-sm font-bold text-slate-600">Chưa có từ vựng tự trích xuất</h5>
+                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1">Hãy tải tệp tin PDF, slide PPTX học tập hoặc hình ảnh có chữ lên hệ thống. AI của chúng tôi sẽ tự động bóc tách từ vựng, dịch nghĩa tiếng Việt và bổ sung danh sách ôn luyện cá nhân tại đây!</p>
+            `;
+            grid.appendChild(emptyCard);
+        } else {
+            customItems.forEach(item => {
+                const themeKey = `history_${item.id}`;
+                const vocabCount = item.analysis.vocabulary.length;
+                const dateStr = new Date(item.timestamp).toLocaleDateString('vi-VN');
+                
+                let icon = 'fa-file-pdf';
+                let bg = 'from-rose-500 to-pink-600';
+                if (item.type === 'image') {
+                    icon = 'fa-image';
+                    bg = 'from-sky-500 to-indigo-600';
+                } else if (item.type === 'pptx') {
+                    icon = 'fa-file-powerpoint';
+                    bg = 'from-orange-500 to-amber-600';
+                }
+                
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between p-6";
+                card.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="h-12 w-12 rounded-xl bg-gradient-to-r ${bg} text-white flex items-center justify-center shadow-md">
+                            <i class="fa-solid ${icon} text-xl"></i>
+                        </div>
+                        <div class="space-y-1">
+                            <h4 class="font-extrabold text-base text-slate-800 leading-snug truncate" title="Từ vựng: ${item.title}">Từ vựng: ${item.title}</h4>
+                            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">Trích từ "${item.fileName}" ngày ${dateStr}. Nhấp để bắt đầu lật Flashcards 3D và làm đề thi từ mới.</p>
+                        </div>
+                        <div class="text-xs font-semibold text-indigo-500 bg-indigo-50 inline-block px-2.5 py-1 rounded-full border border-indigo-100 w-fit">
+                            <i class="fa-solid fa-tags"></i> ${vocabCount} từ trích xuất
+                        </div>
+                    </div>
+                    <button onclick="startVocabTheme('${themeKey}')" class="mt-6 w-full py-3 bg-gradient-to-r ${bg} hover:opacity-95 text-white font-bold text-sm rounded-xl shadow transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5">
+                        Luyện từ vựng này <i class="fa-solid fa-graduation-cap text-xs"></i>
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+    }
+
+    function startVocabTheme(themeKey) {
+        activeVocabThemeKey = themeKey;
+        activeVocabIndex = 0;
+        vocabQuizAnswers = {};
+        currentVocabStudyMode = 'flashcard';
+
+        const theme = getVocabTheme(themeKey);
+        if (!theme) return;
+        
+        document.getElementById('active-theme-title').innerText = theme.title;
+        document.getElementById('active-theme-icon').className = `fa-solid ${theme.icon}`;
+        
+        const iconContainer = document.getElementById('active-theme-icon-container');
+        iconContainer.className = `p-3 rounded-xl text-white bg-gradient-to-r ${theme.bg}`;
+
+        document.getElementById('vocab-themes-view').classList.add('hidden');
+        document.getElementById('vocab-study-view').classList.remove('hidden');
+
+        switchVocabMode('flashcard');
+    }
+
+    function goBackToThemes() {
+        initVocabThemesGrid();
+    }
+
+    function switchVocabMode(mode) {
+        currentVocabStudyMode = mode;
+        const fcBtn = document.getElementById('vocab-mode-flashcard-btn');
+        const qBtn = document.getElementById('vocab-mode-quiz-btn');
+
+        const fcPane = document.getElementById('vocab-flashcard-pane');
+        const qPane = document.getElementById('vocab-quiz-pane');
+
+        if (mode === 'flashcard') {
+            fcBtn.className = "px-6 py-3 border-b-2 border-primary-500 text-primary-600 font-bold text-sm transition-all";
+            qBtn.className = "px-6 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-600 font-bold text-sm transition-all";
+            fcPane.classList.remove('hidden');
+            qPane.classList.add('hidden');
+            renderActiveFlashcard();
+        } else {
+            qBtn.className = "px-6 py-3 border-b-2 border-primary-500 text-primary-600 font-bold text-sm transition-all";
+            fcBtn.className = "px-6 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-600 font-bold text-sm transition-all";
+            qPane.classList.remove('hidden');
+            fcPane.classList.add('hidden');
+            generateVocabQuiz();
+        }
+    }
+
+    function toggleFlashcardFlip() {
+        const card = document.getElementById('flashcard-container');
+        card.classList.toggle('flipped');
+    }
+
+    function renderActiveFlashcard() {
+        const theme = getVocabTheme(activeVocabThemeKey);
+        if (!theme || !theme.words || theme.words.length === 0) return;
+        
+        const wordData = theme.words[activeVocabIndex];
+        if (!wordData) return;
+
+        const container = document.getElementById('flashcard-container');
+        container.classList.remove('flipped');
+
+        document.getElementById('card-front-word').innerText = wordData.word;
+        document.getElementById('card-back-word').innerText = wordData.word;
+        document.getElementById('card-back-meaning').innerText = wordData.meaning;
+        document.getElementById('card-back-example').innerText = wordData.example || "Không có câu ví dụ ngữ cảnh.";
+
+        document.getElementById('flashcard-progress-indicator').innerText = `${activeVocabIndex + 1} / ${theme.words.length}`;
+    }
+
+    function nextFlashcard() {
+        const theme = getVocabTheme(activeVocabThemeKey);
+        if (!theme || !theme.words || theme.words.length === 0) return;
+        activeVocabIndex = (activeVocabIndex + 1) % theme.words.length;
+        renderActiveFlashcard();
+    }
+
+    function prevFlashcard() {
+        const theme = getVocabTheme(activeVocabThemeKey);
+        if (!theme || !theme.words || theme.words.length === 0) return;
+        activeVocabIndex = (activeVocabIndex - 1 + theme.words.length) % theme.words.length;
+        renderActiveFlashcard();
+    }
+
+    function pronounceActiveWord(event) {
+        if (event) {
+            event.stopPropagation(); 
+        }
+        const theme = getVocabTheme(activeVocabThemeKey);
+        if (!theme || !theme.words || theme.words.length === 0) return;
+        
+        const wordData = theme.words[activeVocabIndex];
+        if (!wordData) return;
+
+        // Route speaking through optimized TTS Engine
+        pronounceText(wordData.word);
+    }
+
+    let activeVocabQuizQuestions = [];
+    let isVocabQuizGraded = false;
+
+    function generateVocabQuiz() {
+        if (!activeVocabThemeKey) return;
+        const theme = getVocabTheme(activeVocabThemeKey);
+        if (!theme || !theme.words || theme.words.length === 0) return;
+        
+        const allWords = theme.words;
+        activeVocabQuizQuestions = [];
+        vocabQuizAnswers = {};
+        isVocabQuizGraded = false;
+
+        document.getElementById('vocab-quiz-score-badge').innerText = `0 / ${allWords.length}`;
+        document.getElementById('vocab-quiz-status-text').className = "text-sm font-semibold text-slate-500";
+        document.getElementById('vocab-quiz-status-text').innerText = "Chọn đầy đủ đáp án cho tất cả từ vựng học được rồi bấm nộp bài.";
+
+        const listDiv = document.getElementById('vocab-quiz-questions-list');
+        listDiv.innerHTML = "";
+
+        allWords.forEach((wordObj, index) => {
+            // Pick distractors
+            let distractors = allWords
+                .filter(w => w.word !== wordObj.word)
+                .map(w => w.meaning);
+            
+            // Fallback distractors from system prebuilts if custom list is too small
+            if (distractors.length < 3) {
+                const flatSystemWords = Object.values(prebuiltVocabThemes).flatMap(t => t.words).map(w => w.meaning);
+                distractors = [...distractors, ...flatSystemWords].filter(m => m !== wordObj.meaning);
+            }
+
+            distractors.sort(() => Math.random() - 0.5);
+            const incorrectOptions = distractors.slice(0, 3);
+            
+            let options = [...incorrectOptions, wordObj.meaning];
+            options.sort(() => Math.random() - 0.5);
+
+            activeVocabQuizQuestions.push({
+                word: wordObj.word,
+                correctMeaning: wordObj.meaning,
+                options: options
+            });
+
+            let optionsHtml = "";
+            const letters = ['A', 'B', 'C', 'D'];
+            
+            options.forEach((opt, oIndex) => {
+                const letter = letters[oIndex];
+                optionsHtml += `
+                <label onclick="selectVocabQuizOption(${index}, '${letter}')" id="vocab-opt-container-${index}-${letter}" class="flex items-center space-x-3 p-3.5 bg-slate-50 hover:bg-slate-100 rounded-xl cursor-pointer border border-slate-200 transition-all">
+                    <span id="vocab-opt-badge-${index}-${letter}" class="h-8 w-8 shrink-0 font-bold text-sm bg-white border border-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all">${letter}</span>
+                    <span class="text-sm font-medium text-slate-700 leading-relaxed">${opt}</span>
+                </label>`;
+            });
+
+            const card = document.createElement('div');
+            card.className = "p-5 bg-slate-50/50 rounded-2xl border border-slate-200/60 space-y-4 transition-all";
+            card.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <span class="h-6 w-6 shrink-0 bg-primary-100 text-primary-700 font-extrabold text-xs rounded-lg flex items-center justify-center">Q${index + 1}</span>
+                    <h5 class="font-extrabold text-slate-800 text-base">Nghĩa của từ <span class="text-primary-600 underline font-mono cursor-pointer" onclick="pronounceText('${wordObj.word.replace(/'/g, "\\'")}')" title="Nhấp nghe phát âm">"${wordObj.word}" <i class="fa-solid fa-volume-high text-xs text-primary-400"></i></span> là gì?</h5>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    ${optionsHtml}
+                </div>
+                <div id="vocab-quiz-feedback-${index}" class="hidden p-4 rounded-xl text-xs font-semibold leading-relaxed transition-all"></div>
+            `;
+            listDiv.appendChild(card);
+        });
+    }
+
+    function selectVocabQuizOption(qIndex, letter) {
+        if (isVocabQuizGraded) return;
+
+        const letters = ['A', 'B', 'C', 'D'];
+        letters.forEach(l => {
+            const container = document.getElementById(`vocab-opt-container-${qIndex}-${l}`);
+            const textBadge = document.getElementById(`vocab-opt-badge-${qIndex}-${l}`);
+            
+            if (container && textBadge) {
+                container.className = "flex items-center space-x-3 p-3.5 bg-slate-50 hover:bg-slate-100 rounded-xl cursor-pointer border border-slate-200 transition-all";
+                textBadge.className = "h-8 w-8 shrink-0 font-bold text-sm bg-white border border-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all";
+            }
+        });
+
+        const activeContainer = document.getElementById(`vocab-opt-container-${qIndex}-${letter}`);
+        const activeTextBadge = document.getElementById(`vocab-opt-badge-${qIndex}-${letter}`);
+
+        if (activeContainer && activeTextBadge) {
+            activeContainer.className = "flex items-center space-x-3 p-3.5 bg-primary-50 ring-2 ring-primary-500 rounded-xl cursor-pointer border-transparent transition-all";
+            activeTextBadge.className = "h-8 w-8 shrink-0 font-bold text-sm bg-primary-600 text-white rounded-full flex items-center justify-center transition-all";
+        }
+
+        vocabQuizAnswers[qIndex] = letter;
+    }
+
+    function gradeVocabQuiz() {
+        if (isVocabQuizGraded || !activeVocabThemeKey) return;
+
+        const total = activeVocabQuizQuestions.length;
+        const answeredCount = Object.keys(vocabQuizAnswers).length;
+
+        if (answeredCount < total) {
+            showNotification(`Bạn chưa hoàn thành hết bài trắc nghiệm (${answeredCount}/${total}).`, "warning");
+            return;
+        }
+
+        let score = 0;
+        isVocabQuizGraded = true;
+
+        activeVocabQuizQuestions.forEach((qObj, index) => {
+            const letters = ['A', 'B', 'C', 'D'];
+            const userLetter = vocabQuizAnswers[index];
+            const userSelectedMeaning = qObj.options[letters.indexOf(userLetter)];
+            
+            // Robust trimmed lowercase check for vocabulary definitions matching
+            const isCorrect = userSelectedMeaning && qObj.correctMeaning && 
+                              (userSelectedMeaning.trim().toLowerCase() === qObj.correctMeaning.trim().toLowerCase());
+
+            if (isCorrect) score++;
+
+            const feedback = document.getElementById(`vocab-quiz-feedback-${index}`);
+            feedback.classList.remove('hidden');
+
+            if (isCorrect) {
+                feedback.className = "p-4 rounded-xl text-xs leading-relaxed bg-emerald-50 text-emerald-950 border border-emerald-200";
+                feedback.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1 text-sm"></i> <strong>Chính xác!</strong> Bạn đã chọn đáp án chính xác cho từ "${qObj.word}".`;
+            } else {
+                feedback.className = "p-4 rounded-xl text-xs leading-relaxed bg-rose-50 text-rose-950 border border-rose-200";
+                feedback.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-500 mr-1 text-sm"></i> <strong>Chưa chính xác.</strong> Nghĩa của từ "${qObj.word}" là: <strong>${qObj.correctMeaning}</strong>`;
+            }
+
+            letters.forEach((letter, oIndex) => {
+                const container = document.getElementById(`vocab-opt-container-${index}-${letter}`);
+                const optionValue = qObj.options[oIndex];
+
+                if (container) {
+                    if (optionValue.trim().toLowerCase() === qObj.correctMeaning.trim().toLowerCase()) {
+                        container.className = "flex items-center space-x-3 p-3.5 bg-emerald-50 border-2 border-emerald-500 rounded-xl transition-all";
+                    } else if (letter === userLetter && !isCorrect) {
+                        container.className = "flex items-center space-x-3 p-3.5 bg-rose-50 border-2 border-rose-500 rounded-xl transition-all";
+                    }
+                }
+            });
+        });
+
+        document.getElementById('vocab-quiz-score-badge').innerText = `${score} / ${total}`;
+        
+        const statusText = document.getElementById('vocab-quiz-status-text');
+        statusText.className = "text-sm font-extrabold text-emerald-600";
+        statusText.innerText = `Hoàn tất chấm điểm từ vựng: ${score}/${total} (${Math.round((score/total)*100)}%). Bạn có thể làm lại bao nhiêu lần tùy thích!`;
+
+        showNotification(`Hoàn thành bài kiểm tra! Điểm của bạn: ${score}/${total}`, "success");
+    }
+</script>
+
+<script>
+    function startQuizArena() {
+        if (!currentAnalysis) {
+            showNotification("Vui lòng tải ảnh, file PDF hoặc PPTX lên phân tích trước!", "warning");
+            return;
+        }
+        switchTab('practice');
+    }
+
+    function updatePracticeAreaUI() {
+        const fallback = document.getElementById('quiz-empty-fallback');
+        const arena = document.getElementById('active-quiz-container');
+
+        if (!currentAnalysis) {
+            fallback.classList.remove('hidden');
+            arena.classList.add('hidden');
+            return;
+        }
+
+        fallback.classList.add('hidden');
+        arena.classList.remove('hidden');
+
+        document.getElementById('practice-doc-title').innerText = currentAnalysis.title;
+        
+        let typeLabel = 'Luyện tập qua Ảnh';
+        if (currentAnalysis.type === 'pdf') {
+            typeLabel = 'Luyện tập qua PDF';
+        } else if (currentAnalysis.type === 'pptx') {
+            typeLabel = 'Luyện tập qua PPTX';
+        }
+        document.getElementById('practice-doc-type').innerText = typeLabel;
+        
+        quizState = {
+            answers: {},
+            graded: false,
+            score: 0
+        };
+        document.getElementById('practice-score-badge').innerText = `0 / ${currentAnalysis.analysis.questions.length}`;
+        document.getElementById('quiz-status-feedback').className = "text-sm font-semibold text-slate-500";
+        document.getElementById('quiz-status-feedback').innerText = "Vui lòng chọn đầy đủ đáp án các câu trước khi bấm Nộp bài.";
+
+        const listDiv = document.getElementById('quiz-questions-list');
+        listDiv.innerHTML = "";
+
+        const questions = currentAnalysis.analysis.questions;
+        if (!questions || questions.length === 0) {
+            listDiv.innerHTML = `<div class="text-center py-10">AI chưa tạo câu hỏi cho tài liệu này.</div>`;
+            return;
+        }
+
+        questions.forEach((q, qIndex) => {
+            const optLetters = ['A', 'B', 'C', 'D'];
+            let optionsHtml = "";
+
+            q.options.forEach((opt, oIndex) => {
+                const letter = optLetters[oIndex];
+                optionsHtml += `
+                <label onclick="selectQuizOption(${qIndex}, '${letter}')" id="opt-container-${qIndex}-${letter}" class="flex items-center space-x-3 p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl cursor-pointer border border-slate-200 transition-all">
+                    <span id="opt-badge-${qIndex}-${letter}" class="h-8 w-8 shrink-0 font-bold text-sm bg-white border border-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all">${letter}</span>
+                    <span class="text-sm font-medium text-slate-700 leading-relaxed">${opt}</span>
+                </label>`;
+            });
+
+            const card = document.createElement('div');
+            card.className = "p-6 bg-slate-50/50 rounded-2xl border border-slate-200/60 space-y-4 shadow-sm";
+            card.innerHTML = `
+                <div class="flex items-start space-x-3">
+                    <span class="h-6 w-6 shrink-0 bg-primary-100 text-primary-700 font-extrabold text-xs rounded-lg flex items-center justify-center mt-0.5">Q${qIndex + 1}</span>
+                    <h4 class="font-bold text-slate-800 text-base leading-relaxed">${q.question}</h4>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    ${optionsHtml}
+                </div>
+                <div id="quiz-feedback-box-${qIndex}" class="hidden p-4 rounded-xl text-xs leading-relaxed space-y-1.5 transition-all"></div>
+            `;
+            listDiv.appendChild(card);
+        });
+
+        activeChatHistory = [
+            { role: "user", parts: [{ text: `Tôi vừa nạp tài liệu: ${currentAnalysis.title}. Nội dung chính là: ${currentAnalysis.analysis.summary}.` }] },
+            { role: "model", parts: [{ text: "Tôi đã hiểu nội dung bài học. Hãy hỏi tôi bất kỳ câu nào bạn chưa thông suốt hoặc cần tôi dịch nghĩa giúp nhé!" }] }
+        ];
+        renderChatboxHistory();
+    }
+
+    function selectQuizOption(questionIndex, selectedLetter) {
+        if (quizState.graded) return;
+
+        const optLetters = ['A', 'B', 'C', 'D'];
+        
+        optLetters.forEach(letter => {
+            const container = document.getElementById(`opt-container-${questionIndex}-${letter}`);
+            const badge = document.getElementById(`opt-badge-${questionIndex}-${letter}`);
+            if (container && badge) {
+                container.className = "flex items-center space-x-3 p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl cursor-pointer border border-slate-200 transition-all";
+                badge.className = "h-8 w-8 shrink-0 font-bold text-sm bg-white border border-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all";
+            }
+        });
+
+        const activeContainer = document.getElementById(`opt-container-${questionIndex}-${selectedLetter}`);
+        const activeBadge = document.getElementById(`opt-badge-${questionIndex}-${selectedLetter}`);
+        
+        if (activeContainer && activeBadge) {
+            activeContainer.className = "flex items-center space-x-3 p-3.5 bg-primary-50 ring-2 ring-primary-500 rounded-xl cursor-pointer border-transparent transition-all";
+            activeBadge.className = "h-8 w-8 shrink-0 font-bold text-sm bg-primary-600 text-white rounded-full flex items-center justify-center transition-all";
+        }
+
+        quizState.answers[questionIndex] = selectedLetter;
+    }
+
+    async function gradeActiveQuiz() {
+        if (!currentAnalysis || quizState.graded) return;
+
+        const questions = currentAnalysis.analysis.questions;
+        const total = questions.length;
+        
+        const answeredCount = Object.keys(quizState.answers).length;
+        if (answeredCount < total) {
+            showNotification(`Bạn chưa trả lời hết các câu hỏi (${answeredCount}/${total}). Hãy chọn đáp án để xem giải thích.`, "warning");
+            return;
+        }
+
+        let score = 0;
+        quizState.graded = true;
+
+        questions.forEach((q, qIndex) => {
+            const userAns = quizState.answers[qIndex];
+            
+            // Standardize AI answer strings using the new Parsing engine
+            const resolvedCorrectLetter = getResolvedCorrectLetter(q.correctAnswer, q.options);
+            const isCorrect = userAns === resolvedCorrectLetter;
+
+            if (isCorrect) score++;
+
+            const feedbackBox = document.getElementById(`quiz-feedback-box-${qIndex}`);
+            feedbackBox.classList.remove('hidden');
+
+            const correctOptionText = q.options[['A','B','C','D'].indexOf(resolvedCorrectLetter)] || q.correctAnswer;
+
+            if (isCorrect) {
+                feedbackBox.className = "p-4 rounded-xl text-xs leading-relaxed space-y-1.5 bg-emerald-50 text-emerald-950 border border-emerald-200 shadow-xs";
+                feedbackBox.innerHTML = `
+                    <p class="font-bold flex items-center text-emerald-700 text-sm"><i class="fa-solid fa-circle-check mr-1.5"></i> Chính xác! Đáp án đúng: ${resolvedCorrectLetter} (${correctOptionText})</p>
+                    <p class="font-medium text-slate-600">${q.explanation}</p>
+                `;
+            } else {
+                feedbackBox.className = "p-4 rounded-xl text-xs leading-relaxed space-y-1.5 bg-rose-50 text-rose-950 border border-rose-200 shadow-xs";
+                feedbackBox.innerHTML = `
+                    <p class="font-bold flex items-center text-rose-700 text-sm"><i class="fa-solid fa-circle-xmark mr-1.5"></i> Chưa chính xác. Đáp án của bạn: ${userAns} | Đáp án đúng: ${resolvedCorrectLetter} (${correctOptionText})</p>
+                    <p class="font-medium text-slate-600">${q.explanation}</p>
+                `;
+            }
+
+            const optLetters = ['A', 'B', 'C', 'D'];
+            optLetters.forEach(letter => {
+                const container = document.getElementById(`opt-container-${qIndex}-${letter}`);
+                if (container) {
+                    if (letter === resolvedCorrectLetter) {
+                        container.className = "flex items-center space-x-3 p-3.5 bg-emerald-50 border-2 border-emerald-500 rounded-xl transition-all shadow-xs";
+                    } else if (letter === userAns && !isCorrect) {
+                        container.className = "flex items-center space-x-3 p-3.5 bg-rose-50 border-2 border-rose-500 rounded-xl transition-all shadow-xs";
+                    }
+                }
+            });
+        });
+
+        quizState.score = score;
+        document.getElementById('practice-score-badge').innerText = `${score} / ${total}`;
+
+        currentAnalysis.gradedCount = (currentAnalysis.gradedCount || 0) + 1;
+        currentAnalysis.bestScore = Math.max(currentAnalysis.bestScore || 0, score);
+        
+        await saveHistoryRecord(currentAnalysis);
+
+        const statusDisplay = document.getElementById('quiz-status-feedback');
+        statusDisplay.className = "text-sm font-extrabold text-emerald-600";
+        statusDisplay.innerText = `Đã chấm xong! Kết quả: ${score}/${total} (${Math.round((score/total)*100)}%)`;
+
+        showNotification(`Hoàn tất nộp đề thi! Kết quả của bạn: ${score}/${total}`, "success");
+    }
+
+    function resetQuizSubmission() {
+        updatePracticeAreaUI();
+    }
+</script>
+
+<script>
+    async function sendChatMessage() {
+        const input = document.getElementById('chat-user-input');
+        const text = input.value.trim();
+        if (!text || isProcessing) return;
+
+        input.value = "";
+
+        appendChatBubble(text, 'user');
+        activeChatHistory.push({ role: "user", parts: [{ text: text }] });
+
+        const btn = document.getElementById('btn-send-chat');
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i>`;
+
+        try {
+            const typingId = appendChatBubble("Đang soạn câu trả lời...", 'ai-loading');
+
+            const payload = {
+                contents: activeChatHistory,
+                systemInstruction: {
+                    parts: [{ text: "Bạn là giáo viên hướng dẫn tiếng Anh cao cấp, giải thích cặn kẽ, vui vẻ và lịch sự. Trình bày kèm ví dụ thực tế." }]
+                }
+            };
+
+            const response = await requestGeminiModel(payload);
+            const rawReply = response.candidates[0].content.parts[0].text;
+
+            document.getElementById(typingId).remove();
+            appendChatBubble(rawReply, 'ai');
+            activeChatHistory.push({ role: "model", parts: [{ text: rawReply }] });
+
+            if (currentAnalysis) {
+                if (!currentAnalysis.chats) currentAnalysis.chats = [];
+                currentAnalysis.chats.push({ user: text, ai: rawReply, time: Date.now() });
+                await saveHistoryRecord(currentAnalysis);
+            }
+        } catch (e) {
+            console.error("Lỗi trò chuyện với AI: ", e);
+            appendChatBubble("Xin lỗi, tôi gặp chút trục trặc khi kết nối mạng. Hãy gửi lại câu hỏi.", 'ai');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i>`;
+        }
+    }
+
+    function appendChatBubble(text, sender) {
+        const container = document.getElementById('chat-messages-container');
+        const bubble = document.createElement('div');
+        const uid = "chat_msg_" + Date.now();
+        bubble.id = uid;
+
+        if (sender === 'user') {
+            bubble.className = "bg-primary-600 text-white p-3 rounded-2xl rounded-tr-none ml-auto max-w-[90%] shadow-sm font-medium animate-fade-in text-right break-words";
+            bubble.innerText = text;
+        } else if (sender === 'ai-loading') {
+            bubble.className = "bg-indigo-50 text-indigo-400 p-3 rounded-2xl rounded-tl-none border border-indigo-100 max-w-[90%] italic animate-pulse break-words";
+            bubble.innerText = text;
+        } else {
+            bubble.className = "bg-indigo-50 text-indigo-950 p-3.5 rounded-2xl rounded-tl-none border border-indigo-100 max-w-[90%] leading-relaxed animate-fade-in break-words";
+            bubble.innerHTML = text.replace(/\n/g, '<br>');
+        }
+
+        container.appendChild(bubble);
+        container.scrollTop = container.scrollHeight;
+        return uid;
+    }
+
+    function renderChatboxHistory() {
+        const container = document.getElementById('chat-messages-container');
+        container.innerHTML = "";
+
+        appendChatBubble(`Chào bạn! Tôi đã phân tích xong "${currentAnalysis.title}". Hãy đặt câu hỏi nếu bạn cần làm rõ bất cứ điểm ngữ pháp hay câu hỏi nào bên dưới nhé! 👇`, 'ai');
+
+        if (currentAnalysis.chats && currentAnalysis.chats.length > 0) {
+            currentAnalysis.chats.forEach(log => {
+                appendChatBubble(log.user, 'user');
+                appendChatBubble(log.ai, 'ai');
+            });
+        }
+    }
+</script>
+
+<script>
+    function renderHistoryTab() {
+        const grid = document.getElementById('history-items-grid');
+        const filter = document.getElementById('history-filter-type').value;
+
+        let filtered = historyList;
+        if (filter !== 'all') {
+            filtered = historyList.filter(item => item.type === filter);
+        }
+
+        if (filtered.length === 0) {
+            grid.innerHTML = `
+            <div class="col-span-full text-center py-20 bg-white rounded-3xl border border-slate-200 p-8">
+                <i class="fa-regular fa-folder-open text-5xl text-slate-300 mb-4"></i>
+                <h4 class="text-lg font-bold text-slate-700">Bộ lọc trống</h4>
+                <p class="text-sm text-slate-400 mt-1">Không tìm thấy tài liệu phù hợp.</p>
+            </div>`;
+            return;
+        }
+
+        let html = "";
+        filtered.forEach(item => {
+            const dateStr = new Date(item.timestamp).toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            
+            let labelText = 'IMAGE';
+            let labelClass = 'bg-sky-500 text-white';
+            let previewImg = 'https://placehold.co/400x250/e2e8f0/475569?text=PPTX+Presentation';
+            let icon = 'fa-image text-sky-500 bg-sky-50';
+
+            if (item.type === 'image') {
+                labelText = 'IMAGE';
+                labelClass = 'bg-sky-500 text-white';
+                previewImg = item.fileData || 'https://placehold.co/400x250/e2e8f0/475569?text=Image+Analysis';
+                icon = 'fa-image text-sky-500 bg-sky-50';
+            } else if (item.type === 'pdf') {
+                labelText = 'PDF';
+                labelClass = 'bg-rose-500 text-white';
+                previewImg = 'https://placehold.co/400x250/ffe4e6/991b1b?text=PDF+Document';
+                icon = 'fa-file-pdf text-rose-500 bg-rose-50';
+            } else if (item.type === 'pptx') {
+                labelText = 'PPTX';
+                labelClass = 'bg-orange-500 text-white';
+                previewImg = 'https://placehold.co/400x250/ffedd5/9a3412?text=PPTX+Slide';
+                icon = 'fa-file-powerpoint text-orange-500 bg-orange-50';
+            }
+
+            const scoreLabel = item.bestScore !== undefined ? `${item.bestScore}/${item.analysis.questions.length}` : 'Chưa thi';
+
+            html += `
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
+                <div class="relative h-40 overflow-hidden bg-slate-100 flex items-center justify-center">
+                    <img src="${previewImg}" class="w-full h-full object-cover" alt="Bản xem trước">
+                    <span class="absolute top-3 left-3 p-2 rounded-xl text-xs font-bold shadow-md flex items-center ${labelClass}">
+                        <i class="fa-solid ${icon.split(' ')[0]} mr-1.5"></i> ${labelText}
+                    </span>
+                </div>
+                <div class="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-base truncate" title="${item.title}">${item.title}</h4>
+                        <p class="text-xs text-slate-400 mt-1 truncate">Tên tệp: ${item.fileName}</p>
+                        <p class="text-xs text-slate-400">Ngày lưu: ${dateStr}</p>
+                    </div>
+                    
+                    <div class="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
+                        <span class="text-slate-500 font-semibold"><i class="fa-solid fa-trophy text-amber-500 mr-1"></i> Điểm cao nhất: <strong class="text-slate-800">${scoreLabel}</strong></span>
+                        <span class="text-slate-500"><i class="fa-solid fa-clipboard-question text-primary-500 mr-1"></i> ${item.analysis.questions.length} câu</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button onclick="viewHistoryItem('${item.id}')" class="px-3.5 py-2.5 bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-magnifying-glass"></i> Phân tích
+                        </button>
+                        <button onclick="restartHistoryQuiz('${item.id}')" class="px-3.5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-gamepad"></i> Luyện thi
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
+        grid.innerHTML = html;
+    }
+
+    function viewHistoryItem(recordId) {
+        const found = historyList.find(r => r.id === recordId);
+        if (!found) return;
+
+        currentAnalysis = found;
+
+        if (found.type === 'image') {
+            displayImageAnalysis(found);
+            switchTab('image');
+        } else if (found.type === 'pdf') {
+            displayPdfAnalysis(found);
+            switchTab('pdf');
+        } else if (found.type === 'pptx') {
+            displayPptxAnalysis(found);
+            switchTab('pptx');
+        }
+        showNotification(`Đã mở thành công tài liệu: ${found.title}`, "success");
+    }
+
+    function restartHistoryQuiz(recordId) {
+        const found = historyList.find(r => r.id === recordId);
+        if (!found) return;
+
+        currentAnalysis = found;
+        switchTab('practice');
+    }
+</script>
+
+</body>
+</html>
